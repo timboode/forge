@@ -1,0 +1,7 @@
+bin/
+obj/
+logs/
+*.sqlite
+*.sqlite.tmp
+*.db
+*.user
