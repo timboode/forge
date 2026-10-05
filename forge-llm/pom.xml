@@ -56,4 +56,28 @@
         </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <!-- Writes the runtime classpath to target/classpath.txt for the launch scripts in scripts/ -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.6.1</version>
+                <executions>
+                    <execution>
+                        <id>write-classpath</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>build-classpath</goal>
+                        </goals>
+                        <configuration>
+                            <outputFile>${project.build.directory}/classpath.txt</outputFile>
+                            <includeScope>runtime</includeScope>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>

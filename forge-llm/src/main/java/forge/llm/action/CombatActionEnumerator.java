@@ -17,6 +17,8 @@ public final class CombatActionEnumerator {
     public ActionSet attacks(Player attacker, Combat combat) {
         final List<GameAction> out = new ArrayList<>();
         final List<UnavailableAction> unavailable = new ArrayList<>();
+        // creatures that an effect forces to attack ("attacks each combat if able", goad, ...): an attack that leaves them home is rejected
+        final java.util.Set<Card> mandatory = combat.getAttackConstraints().getLegalAttackers().getLeft().keySet();
         for (Card creature : attacker.getCreaturesInPlay()) {
             if (!CombatUtil.canAttack(creature)) {
                 unavailable.add(new UnavailableAction(PriorityActionEnumerator.cardLabel(creature) + " cannot attack",
@@ -25,7 +27,7 @@ public final class CombatActionEnumerator {
             }
             for (GameEntity defender : combat.getDefenders()) {
                 if (CombatUtil.canAttack(creature, defender)) {
-                    out.add(new AttackAction(creature, defender));
+                    out.add(new AttackAction(creature, defender, mandatory.contains(creature)));
                 }
             }
         }
@@ -51,7 +53,7 @@ public final class CombatActionEnumerator {
             boolean blocksAny = false;
             for (Card attacker : attackers) {
                 if (CombatUtil.canBlock(attacker, blocker, combat)) {
-                    out.add(new BlockAction(blocker, attacker));
+                    out.add(new BlockAction(blocker, attacker, CombatUtil.getMinNumBlockersForAttacker(attacker, defender)));
                     blocksAny = true;
                 }
             }

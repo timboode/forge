@@ -1,6 +1,7 @@
 package forge.llm.action;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
 import forge.llm.bridge.AiBridge;
+import forge.llm.state.CommanderSummary;
 import forge.llm.state.ManaSummary;
 
 /**
@@ -47,6 +49,11 @@ public final class PriorityActionEnumerator {
                 Logger.warn(e, "LLM action enumeration skipped {}", sa);
             }
         }
+
+        // The engine can offer the very same play twice (e.g. a commander castable from the command zone through two
+        // separate permissions); to the agent they are indistinguishable, so list each once.
+        final Set<String> seen = new HashSet<>();
+        actions.removeIf(a -> !seen.add(a.describe()));
 
         final List<UnavailableAction> unavailableList = new ArrayList<>();
         for (Map.Entry<String, String> e : unavailable.entrySet()) {
@@ -213,6 +220,13 @@ public final class PriorityActionEnumerator {
             final String cost = sa.getPayCosts() == null ? "" : sa.getPayCosts().toSimpleString();
             if (!cost.isEmpty()) {
                 d.append(" [cost: ").append(cost).append("]");
+            }
+            final Player activator = sa.getActivatingPlayer();
+            if (sa.isSpell() && activator != null && host.getZone() != null && host.getZone().is(ZoneType.Command)) {
+                final int tax = CommanderSummary.commanderTax(activator, host);
+                if (tax > 0) {
+                    d.append(" (commander tax: {").append(tax).append("} extra, already counted in whether you can afford it)");
+                }
             }
             final String text = abbreviate(sa.getDescription());
             if (!text.isEmpty()) {

@@ -10,6 +10,7 @@ import forge.llm.action.UnavailableAction;
 import forge.llm.agent.DecisionKind;
 import forge.llm.context.Memory;
 import forge.llm.context.SessionState;
+import forge.llm.state.CommanderSummary;
 import forge.llm.state.DeckSummary;
 import forge.llm.state.GameStateRenderer;
 import forge.llm.state.MatchLogView;
@@ -43,10 +44,13 @@ public final class PromptBuilder {
         final StringBuilder sb = new StringBuilder();
 
         sb.append("# GAME\n");
-        sb.append("You are ").append(me.getName()).append(". Format: ").append(game.getRules().getGameType()).append(". ");
+        sb.append("You are ").append(me.getName()).append(". Format: ").append(CommanderSummary.formatName(game)).append(". ");
         sb.append("Opponents: ");
         List<String> opponents = me.getOpponents().stream().map(Player::getName).toList();
         sb.append(String.join(", ", opponents)).append(".\n");
+        if (CommanderSummary.isCommanderGame(game)) {
+            sb.append(CommanderSummary.rulesReminder(game)).append('\n');
+        }
 
         sb.append("\n# MEMORY\n");
         sb.append("## Your previous turn (compressed)\n")

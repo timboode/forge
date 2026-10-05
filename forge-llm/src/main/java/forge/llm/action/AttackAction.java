@@ -8,10 +8,12 @@ import forge.game.player.Player;
 public final class AttackAction extends GameAction {
     private final Card attacker;
     private final GameEntity defender;
+    private final boolean mustAttack;
 
-    AttackAction(Card attacker, GameEntity defender) {
+    AttackAction(Card attacker, GameEntity defender, boolean mustAttack) {
         this.attacker = attacker;
         this.defender = defender;
+        this.mustAttack = mustAttack;
     }
 
     @Override
@@ -30,7 +32,8 @@ public final class AttackAction extends GameAction {
     @Override
     public String describe() {
         return "Attack with " + PriorityActionEnumerator.cardLabel(attacker) + " " + attacker.getNetPower() + "/"
-                + attacker.getNetToughness() + " -> " + defenderLabel(defender);
+                + attacker.getNetToughness() + " -> " + defenderLabel(defender)
+                + (mustAttack ? " [this creature must attack this turn if it can]" : "");
     }
 
     @Override

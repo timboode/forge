@@ -149,7 +149,13 @@ public final class GameStateRenderer {
 
         zoneLine(sb, "Graveyard", p.getCardsIn(ZoneType.Graveyard), me, mentioned);
         zoneLine(sb, "Exile", p.getCardsIn(ZoneType.Exile), me, mentioned);
-        zoneLine(sb, "Command zone", p.getCardsIn(ZoneType.Command), me, mentioned);
+        // the engine parks its own bookkeeping effects in the command zone too; only real cards and emblems matter
+        zoneLine(sb, "Command zone", CardLists.filter(p.getCardsIn(ZoneType.Command), c -> !c.isImmutable() || c.isEmblem()), me, mentioned);
+        if (CommanderSummary.isCommanderGame(p.getGame())) {
+            for (String line : CommanderSummary.linesFor(p)) {
+                sb.append(line).append('\n');
+            }
+        }
     }
 
     private void permanents(StringBuilder sb, String label, CardCollectionView cards, Player me, Map<String, Card> mentioned) {

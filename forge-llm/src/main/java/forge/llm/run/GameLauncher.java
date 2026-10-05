@@ -21,8 +21,17 @@ public final class GameLauncher {
     }
 
     public static Match newMatch(List<RegisteredPlayer> players) {
+        return newMatch(players, Format.CONSTRUCTED);
+    }
+
+    /** A match in the given format, set up like Forge's lobby does it: base type Constructed plus the format's variants. */
+    public static Match newMatch(List<RegisteredPlayer> players, Format format) {
         final GameRules rules = new GameRules(GameType.Constructed);
-        rules.setAppliedVariants(java.util.EnumSet.of(GameType.Constructed));
+        final java.util.Set<GameType> variants = new java.util.HashSet<>(format.variants());
+        if (variants.isEmpty()) {
+            variants.add(GameType.Constructed);
+        }
+        rules.setAppliedVariants(variants);
         return new Match(rules, players, "LLM test");
     }
 

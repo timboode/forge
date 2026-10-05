@@ -1,0 +1,178 @@
+package forge.llm.run;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import forge.llm.agent.DecisionAgent;
+import forge.llm.agent.RecordingAgent;
+import forge.llm.agent.stub.HeuristicStubAgent;
+import forge.llm.agent.stub.PassOnlyStubAgent;
+import forge.llm.control.LlmPlayerConfig;
+import forge.llm.opencode.OpencodeAgent;
+import forge.llm.opencode.OpencodeSettings;
+
+/**
+ * The command-line options shared by the headless runner, the GUI launcher and the opencode check, and the
+ * objects built from them (agent, per-player configuration, opencode settings).
+ *
+ * <pre>
+ * Game:    --format constructed|commander        --seats llm,ai,ai,...   --deck1 .. --deckN (file or library name or "random")
+ *          --seed S   --transcript &lt;dir&gt;
+ * Agent:   --agent heuristic|pass|opencode       --decision-timeout &lt;s&gt;   --max-log-lines N   --max-consultations N
+ * opencode:
+ *          --oc-model providerID/modelID         (default lmstudio/google/gemma-4-e2b)
+ *          --oc-lmstudio-url http://127.0.0.1:1234/v1     --oc-context &lt;tokens&gt;
+ *          --oc-provider-config &lt;opencode.json&gt;  (borrow its "provider" section, e.g. ~/.config/opencode/opencode.json)
+ *          --oc-variant &lt;name&gt;  --oc-exe &lt;path&gt;  --oc-keep-sessions  --oc-log-level DEBUG|INFO  --oc-work-dir &lt;dir&gt;
+ *          --oc-url &lt;url&gt;   (use an opencode server that is already running; password from OPENCODE_SERVER_PASSWORD)
+ *          --mcp-url &lt;url&gt;  (MCP server with the lookupCard tool, see forge-llm/mcp)
+ * </pre>
+ */
+public final class RunOptions {
+    private final Map<String, String> opts;
+
+    private RunOptions(Map<String, String> opts) {
+        this.opts = opts;
+    }
+
+    public static RunOptions parse(String[] args) {
+        final Map<String, String> m = new HashMap<>();
+        for (int i = 0; i < args.length; i++) {
+            if (!args[i].startsWith("--")) {
+                throw new IllegalArgumentException("unexpected argument " + args[i]);
+            }
+            final String key = args[i].substring(2);
+            if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+                m.put(key, args[++i]);
+            } else {
+                m.put(key, "true");
+            }
+        }
+        return new RunOptions(m);
+    }
+
+    /** These options with {@code key} set to {@code value} unless it was given explicitly. */
+    public RunOptions withDefault(String key, String value) {
+        final Map<String, String> copy = new HashMap<>(opts);
+        copy.putIfAbsent(key, value);
+        return new RunOptions(copy);
+    }
+
+    public boolean has(String key) {
+        return opts.containsKey(key);
+    }
+
+    public String get(String key) {
+        return opts.get(key);
+    }
+
+    public String get(String key, String fallback) {
+        return opts.getOrDefault(key, fallback);
+    }
+
+    public int getInt(String key, int fallback) {
+        return opts.containsKey(key) ? Integer.parseInt(opts.get(key)) : fallback;
+    }
+
+    // ---- game ------------------------------------------------------------------------------------------
+
+    public Format format() {
+        return Format.parse(opts.get("format"));
+    }
+
+    /** The seats named by {@code --seats}, or by {@code defaultSpec} (comma separated human|llm|ai). */
+    public List<Seat.Kind> seatKinds(String defaultSpec) {
+        final List<Seat.Kind> kinds = new ArrayList<>();
+        for (String s : opts.getOrDefault("seats", defaultSpec).split(",")) {
+            kinds.add(Seat.Kind.parse(s));
+        }
+        if (kinds.size() < 2) {
+            throw new IllegalArgumentException("a game needs at least two seats");
+        }
+        return kinds;
+    }
+
+    /** The deck given for seat {@code number} (1-based) with {@code --deckN}; null = none given (use a random one). */
+    public String deckSpec(int number) {
+        return opts.get("deck" + number);
+    }
+
+    public Path transcriptDir() throws IOException {
+        if (!opts.containsKey("transcript")) {
+            return null;
+        }
+        return Files.createDirectories(Path.of(opts.get("transcript")));
+    }
+
+    // ---- agent -----------------------------------------------------------------------------------------
+
+    public String agentKind() {
+        return opts.getOrDefault("agent", "heuristic");
+    }
+
+    /** Creates the agent (for opencode this launches or attaches to the server). Close it when done if it is AutoCloseable. */
+    public DecisionAgent createAgent() {
+        return switch (agentKind()) {
+            case "pass" -> new PassOnlyStubAgent();
+            case "heuristic" -> new HeuristicStubAgent();
+            case "opencode" -> OpencodeAgent.connect(opencodeSettings());
+            default -> throw new IllegalArgumentException("unknown agent '" + agentKind() + "' (heuristic|pass|opencode)");
+        };
+    }
+
+    /** Wraps the agent so every prompt and answer is written to {@code <transcript dir>/<tag>.txt}; the agent itself if no transcript was asked for. */
+    public DecisionAgent recorded(DecisionAgent base, String tag) throws IOException {
+        final Path dir = transcriptDir();
+        if (dir == null) {
+            return base;
+        }
+        final String header = base instanceof OpencodeAgent opencode
+                ? "======== STANDING INSTRUCTIONS (the system prompt of every session) ========\n" + opencode.systemPrompt() + "\n"
+                : "";
+        return new RecordingAgent(base, Files.newBufferedWriter(dir.resolve(tag + ".txt"), StandardCharsets.UTF_8), header);
+    }
+
+    public LlmPlayerConfig playerConfig() {
+        final LlmPlayerConfig config = new LlmPlayerConfig();
+        if (opts.containsKey("decision-timeout")) {
+            config.decisionTimeoutSeconds = Integer.parseInt(opts.get("decision-timeout"));
+        } else if ("opencode".equals(agentKind())) {
+            config.decisionTimeoutSeconds = 900; // a local model can be slow; the call is abandoned after this
+        }
+        if (opts.containsKey("max-log-lines")) {
+            config.maxLogLines = Integer.parseInt(opts.get("max-log-lines"));
+        }
+        if (opts.containsKey("max-consultations")) {
+            config.maxConsultationsPerTurn = Integer.parseInt(opts.get("max-consultations"));
+        }
+        return config;
+    }
+
+    public OpencodeSettings opencodeSettings() {
+        final OpencodeSettings s = new OpencodeSettings();
+        s.model = opts.getOrDefault("oc-model", s.model);
+        s.lmStudioBaseUrl = opts.getOrDefault("oc-lmstudio-url", s.lmStudioBaseUrl);
+        if (opts.containsKey("oc-context")) {
+            s.contextTokens = Integer.parseInt(opts.get("oc-context"));
+        }
+        if (opts.containsKey("oc-provider-config")) {
+            s.providerConfigFile = Path.of(opts.get("oc-provider-config"));
+        }
+        s.variant = opts.get("oc-variant");
+        s.executable = opts.get("oc-exe");
+        s.keepSessions = opts.containsKey("oc-keep-sessions");
+        s.logLevel = opts.get("oc-log-level");
+        if (opts.containsKey("oc-work-dir")) {
+            s.workDir = Path.of(opts.get("oc-work-dir"));
+        }
+        s.serverUrl = opts.get("oc-url");
+        s.cardServerUrl = opts.get("mcp-url");
+        return s;
+    }
+}

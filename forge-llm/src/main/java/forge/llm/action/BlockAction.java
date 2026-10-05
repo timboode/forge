@@ -6,10 +6,12 @@ import forge.game.card.Card;
 public final class BlockAction extends GameAction {
     private final Card blocker;
     private final Card attacker;
+    private final int minBlockers;
 
-    BlockAction(Card blocker, Card attacker) {
+    BlockAction(Card blocker, Card attacker, int minBlockers) {
         this.blocker = blocker;
         this.attacker = attacker;
+        this.minBlockers = minBlockers;
     }
 
     @Override
@@ -29,7 +31,8 @@ public final class BlockAction extends GameAction {
     public String describe() {
         return "Block " + PriorityActionEnumerator.cardLabel(attacker) + " " + attacker.getNetPower() + "/"
                 + attacker.getNetToughness() + " with " + PriorityActionEnumerator.cardLabel(blocker) + " "
-                + blocker.getNetPower() + "/" + blocker.getNetToughness();
+                + blocker.getNetPower() + "/" + blocker.getNetToughness()
+                + (minBlockers > 1 ? " [that attacker can only be blocked by " + minBlockers + " or more creatures together]" : "");
     }
 
     @Override

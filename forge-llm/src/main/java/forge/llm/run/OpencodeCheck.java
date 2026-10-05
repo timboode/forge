@@ -1,7 +1,6 @@
 package forge.llm.run;
 
 import java.util.List;
-import java.util.Map;
 
 import forge.llm.action.GameAction;
 import forge.llm.agent.AgentChoice;
@@ -71,8 +70,7 @@ public final class OpencodeCheck {
             """;
 
     public static void main(String[] args) throws Exception {
-        final Map<String, String> opts = LlmMatchRunner.parse(args);
-        final OpencodeSettings settings = LlmMatchRunner.opencodeSettings(opts);
+        final OpencodeSettings settings = RunOptions.parse(args).opencodeSettings();
         System.out.println("Model: " + settings.model + (settings.cardServerUrl != null ? ", card server " + settings.cardServerUrl : ""));
 
         long t = System.nanoTime();

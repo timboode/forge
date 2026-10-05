@@ -262,6 +262,85 @@ public class LlmGameIntegrationTest {
         assertTrue(sawCompact, "restarted sessions must use the compact prompt");
     }
 
+    /**
+     * Commander: 40 life, a command zone, commander damage and tax, and several opponents - the table the Forge GUI
+     * sets up for a multiplayer Commander game. Two seats are LLM-driven (stub agents), two are the built-in AI.
+     */
+    @Test
+    public void aFourPlayerCommanderGameWithTwoLlmSeatsRunsToCompletionAndShowsCommanderInformation() {
+        MyRandom.setRandom(new java.util.Random(21));
+        List<forge.llm.run.Seat.Kind> kinds = List.of(forge.llm.run.Seat.Kind.LLM, forge.llm.run.Seat.Kind.AI,
+                forge.llm.run.Seat.Kind.LLM, forge.llm.run.Seat.Kind.AI);
+        List<forge.llm.run.Seat> seats = forge.llm.run.MatchSetup.seats(forge.llm.run.RunOptions.parse(new String[0]),
+                forge.llm.run.Format.COMMANDER, kinds);
+        AuditingAgent first = new AuditingAgent();
+        AuditingAgent second = new AuditingAgent();
+        forge.llm.run.MatchSetup.Table table = forge.llm.run.MatchSetup.table(forge.llm.run.Format.COMMANDER, seats,
+                seat -> seat == seats.get(0) ? first : second, LlmPlayerConfig::new);
+
+        GameLauncher.Result result = GameLauncher.play(GameLauncher.newMatch(table.players(), forge.llm.run.Format.COMMANDER), 420);
+
+        assertFalse(result.timedOut(), "the game hit the time limit");
+        assertTrue(result.game().isGameOver());
+        for (forge.llm.control.LobbyPlayerLlm llm : table.llmSeats()) {
+            LlmStats stats = llm.stats();
+            assertTrue(stats.consultations.get() > 0, llm.getName() + " " + stats);
+            assertEquals(stats.failedExecutions.get(), 0, "an offered action failed - " + llm.getName() + " " + stats);
+            assertEquals(stats.invalidAnswers.get(), 0, llm.getName() + " " + stats);
+            assertEquals(stats.fallbacksToAi.get(), 0, llm.getName() + " " + stats);
+        }
+
+        AgentRequest opening = first.requests.stream().filter(AgentRequest::newSession).findFirst().orElseThrow();
+        assertTrue(opening.prompt().contains("Format: Commander"), "the format is named");
+        assertTrue(opening.prompt().contains("Commander rules:"), "rules reminder for the model");
+        assertTrue(opening.prompt().contains("There are 3 opponents"), "multiplayer hint");
+        assertTrue(opening.prompt().contains("life 40"), "Commander starting life");
+        assertEquals(opening.prompt().split("### OPPONENT", -1).length - 1, 3, "every opponent is shown");
+        assertTrue(opening.prompt().contains("Commander: "), "each player's commander is listed with its zone and cast count");
+        assertTrue(opening.prompt().contains("Commander:\n"), "the decklist has a commander section");
+
+        // with several opponents an attacker can pick whom to attack: some attack request offered more than one defender
+        int mostDefenders = 0;
+        for (AgentRequest r : first.requests) {
+            if (r.kind() == DecisionKind.ATTACK) {
+                long defenders = r.options().stream().map(GameAction::describe).map(d -> d.substring(d.indexOf("-> ")))
+                        .distinct().count();
+                mostDefenders = (int) Math.max(mostDefenders, defenders);
+            }
+        }
+        boolean everAttacked = first.requests.stream().anyMatch(r -> r.kind() == DecisionKind.ATTACK);
+        assertTrue(!everAttacked || mostDefenders >= 2, "attack requests offered at most " + mostDefenders + " defender(s)");
+    }
+
+    /** The random-action agent at a Commander table: command-zone casts, commander tax and several defenders. */
+    @Test
+    public void whateverTheAgentPicksInACommanderGameTheEnginePlaysIt() {
+        for (long seed = 31; seed <= 31; seed++) {
+            final long chaosSeed = seed;
+            MyRandom.setRandom(new java.util.Random(seed));
+            List<forge.llm.run.Seat> seats = forge.llm.run.MatchSetup.seats(forge.llm.run.RunOptions.parse(new String[0]),
+                    forge.llm.run.Format.COMMANDER, List.of(forge.llm.run.Seat.Kind.LLM, forge.llm.run.Seat.Kind.AI, forge.llm.run.Seat.Kind.AI));
+            forge.llm.run.MatchSetup.Table table = forge.llm.run.MatchSetup.table(forge.llm.run.Format.COMMANDER, seats,
+                    seat -> new ChaosAgent(chaosSeed), () -> {
+                        LlmPlayerConfig cfg = new LlmPlayerConfig();
+                        cfg.maxConsultationsPerTurn = 12; // a random player dithers; keep the game moving
+                        return cfg;
+                    });
+
+            GameLauncher.Result result = GameLauncher.play(GameLauncher.newMatch(table.players(), forge.llm.run.Format.COMMANDER), 90);
+
+            LlmStats stats = table.llmSeats().get(0).stats();
+            assertTrue(stats.consultations.get() > 0, "seed " + seed + ": " + stats);
+            assertEquals(stats.failedExecutions.get(), 0, "an offered action could not be played (seed " + seed + "): " + stats);
+            // A random agent can still be told "no" - e.g. one blocker for an attacker that needs two - and then the
+            // built-in AI decides: invalid answers and fallbacks are legitimate here. A Commander game with a passive
+            // player can also simply go on for a long time, so the game need not finish; what must never happen is an
+            // offered action that cannot be played, or a game that stops making progress.
+            assertTrue(result.game().getPhaseHandler().getTurn() >= 8 || !result.timedOut(),
+                    "seed " + seed + ": the game only reached turn " + result.game().getPhaseHandler().getTurn() + " - it looks stuck");
+        }
+    }
+
     @Test
     public void aPassOnlyAgentCanNeverWedgeTheGame() {
         Played p = play(new PassOnlyStubAgent(), new LlmPlayerConfig(), DECK_PAIRS[1], 9);

@@ -31,7 +31,7 @@ a large-context hosted model later. See "Using a real model through opencode".
 | `control` | `PlayerControllerLlm` / `LobbyPlayerLlm` (the integration point), `PriorityGate` (when is the model worth waking), `LlmPlayerConfig`, `LlmStats`. |
 | `bridge`  | `AiBridge` - the only coupling to forge-ai internals. |
 | `opencode`| `OpencodeAgent` (the real-model `DecisionAgent`), `OpencodeServer` (launches/stops `opencode serve`), `OpencodeClient` (HTTP), `OpencodeConfigBuilder` (the config + lean `forge-player` agent injected into opencode), `OpencodeSettings`. |
-| `run`     | `LlmMatchRunner` (headless CLI, modelled on `forge sim`), `OpencodeCheck` (setup sanity check), `GameLauncher`. |
+| `run`     | `PlayVsLlm` (**play in the Forge GUI** against LLM opponents), `LlmMatchRunner` (headless games, modelled on `forge sim`), `OpencodeCheck` (setup sanity check), plus the shared `RunOptions`, `MatchSetup`, `DeckSource`, `Format`, `Seat`, `GameLauncher`. |
 
 ## How a decision flows
 
@@ -68,22 +68,64 @@ a large-context hosted model later. See "Using a real model through opencode".
 
 ## Running it
 
-Needs JDK 17 and the Forge build (run from this directory: the runner finds Forge's resources via `../forge-gui`).
+Needs JDK 17+ (`JAVA_HOME` is used when set) and the Forge build. Build once from the repository root, then use the
+launch scripts in `forge-llm/scripts` - below, `llm` stands for `forge-llm/scripts/llm.cmd` on Windows and
+`forge-llm/scripts/llm.sh` elsewhere:
 
 ```
-# from the repo root: build + run unit and integration tests
-mvn -Pllm -pl forge-llm -am test
+mvn -Pllm -pl forge-llm -am compile                 # also writes forge-llm/target/classpath.txt for the scripts
 
-# compile, then play the stub agent against the built-in AI
-mvn -Pllm -pl forge-llm -am compile
-java -cp "forge-llm/target/classes;<module classpath>" forge.llm.run.LlmMatchRunner \
-     --deck1 forge-gui/res/quest/precons/Aerodoom.dck --deck2 "forge-gui/res/quest/precons/Air Forces.dck" \
-     --seed 42 --transcript out/
+llm play  [options]               # play in the Forge window against LLM opponents (below)
+llm run   [options]               # headless games: results, statistics, --transcript <dir>
+llm check [options]               # does opencode + the model answer? (no game)
+
+mvn -Pllm -pl forge-llm -am test                    # unit + integration tests
 ```
 
-(`<module classpath>`: `mvn dependency:build-classpath` for `forge-llm`; the JVM also needs Forge's usual
-`--add-opens` flags, see `forge-gui-desktop/pom.xml`.) `--transcript <dir>` writes every prompt the agent
-saw and every answer to `<dir>/player1.txt`, the quickest way to review exactly what a model would receive.
+Options are shared by all three (`forge.llm.run.RunOptions` documents them): `--format constructed|commander`,
+`--seats human,llm,ai,ai`, `--deck1 .. --deckN` (a .dck file, a name from your Forge deck library, or `random`),
+`--agent heuristic|pass|opencode`, `--seed`, `--transcript <dir>` (every prompt the model saw and every answer),
+plus the `--oc-*` / `--mcp-url` options below. Seats without a deck get a random deck that ships with Forge
+(the 180 commander precons for Commander).
+
+## Playing a game against the LLM yourself (Commander or Constructed)
+
+```
+llm play --deck1 "<your deck>" --mcp-url http://127.0.0.1:3041/
+llm play --list-decks                    # names to use for --deck1 (marks decks that cannot be played)
+llm play --seats human,llm,llm,ai --deck1 "<your deck>"
+```
+
+This opens the normal Forge window and starts a match straight away with you in your seat; the other seats are LLM-
+or AI-driven. Defaults: Commander, seats `human,llm,ai,ai`, the opencode agent with the model from
+`--oc-model` (LM Studio's Gemma unless told otherwise; see "Using a real model through opencode" for DeepSeek).
+Exactly one seat must be `human`. `--format constructed` plays a normal 1v1 (`--seats human,llm`).
+
+Things to expect: the opponent's turns look like the built-in AI's but with pauses while the model thinks (a local model
+can take a minute per decision; with a hosted model, seconds). Closing the window stops the opencode server it started.
+Add `--transcript out/` to read afterwards what each LLM seat was shown and what it answered. It does not
+touch Forge's own lobby or any Forge source: it starts the desktop application the way `forge.view.Main` does and hands
+a ready-made table to Forge's `HostedMatch`.
+
+## Commander and multiplayer
+
+LLM seats work in Commander (and any other number of seats) the same way as in a 1v1:
+
+* The table is set up as Forge's lobby does it (base game type Constructed + the Commander variant): 40 life, a command
+  zone, commander damage and commander tax are the engine's.
+* Prompts add what a Commander player needs to see: the rules reminder and the number of opponents, every player's
+  commander with its zone and how often it was cast (and so the extra `{2}` per cast), the commander damage each player
+  has taken from which commander (21 is lethal), the commander section of the decklist, and the engine's own bookkeeping
+  cards are hidden from the command zone.
+* Casting a commander from the command zone is a normal option in the action list; the tax is noted on it and is already
+  part of the "can you afford it" check.
+* Attacks offer every opponent (and planeswalker) as a defender per creature; blocks only list attackers that attack
+  you. Options are annotated where the engine's rules would otherwise reject an answer: creatures that must attack, and
+  attackers that can only be blocked by two or more creatures together.
+* Identical offers (a commander castable through two permissions) are listed once.
+
+Commander tables are far larger than a 1v1 prompt-wise (three opponents' boards): use a large-context model for real
+games; with a 16k local model the compact-prompt restart will fire often.
 
 ## Using a real model through opencode
 
@@ -129,14 +171,11 @@ Small models rarely use it; the prompt already contains the text of every card o
 CARDDB_SKIP_IMPORTS=1 dotnet run -c Release --project forge-llm/mcp/CardDatabaseMCPServer -- 3041
 
 # 2. check the setup without a game: starts opencode, asks a canned question, a follow-up and a summary
-java -cp "forge-llm/target/classes;<classpath>" forge.llm.run.OpencodeCheck [--oc-model ...] [--mcp-url http://127.0.0.1:3041/]
+llm check [--oc-model ...] [--mcp-url http://127.0.0.1:3041/]
 
-# 3. play (slow with a local model - minutes per turn)
-java ... forge.llm.run.LlmMatchRunner --deck1 ... --deck2 ... --agent opencode --mcp-url http://127.0.0.1:3041/      --transcript out/ --timeout 1800 --max-log-lines 80
+# 3. headless game (slow with a local model - minutes per turn), or play yourself with "llm play" (see above)
+llm run --agent opencode --mcp-url http://127.0.0.1:3041/ --format commander --seats llm,ai,ai --transcript out/ --timeout 1800 --max-log-lines 80
 ```
-
-`<classpath>` comes from `mvn -Pllm -pl forge-llm -am compile dependency:build-classpath -Dmdep.outputFile=cp.txt`; the JVM
-also needs Forge's usual `--add-opens` flags for the runner (not for `OpencodeCheck`).
 
 **A different model** (e.g. a hosted DeepSeek with a 500k window) - reuse the providers from your own opencode config:
 
@@ -161,6 +200,7 @@ or run with a config that does.
 * `ChoiceParserTest`, `PriorityGateTest`, `ContextManagerTest` - pure unit tests.
 * `OpencodeAgentTest`, `OpencodeConfigBuilderTest` - the opencode integration against a fake opencode server (HTTP, auth, sessions, overflow, summaries, config).
 * `OpencodeLiveTest` - against a real opencode and model; skipped unless `FORGE_LLM_LIVE=true`.
+* `RunOptionsTest` - command-line parsing, seats, defaults.
 * `LlmGameIntegrationTest` - complete games on the real engine: every offered action executes, the agent is
   never asked when only passing is possible, prompts/sessions/memory have the designed shape, and a throwing
   or garbage-answering agent degrades to the built-in AI without wedging the game.
@@ -171,7 +211,8 @@ or run with a config that does.
   abilities, modes of modal spells, X values, kicker and similar are still decided by the built-in AI helper.
 * Mana is paid automatically (the agent sees available mana, not individual lands).
 * Mulligans, discards, scry, trigger targets and other mid-resolution choices are the built-in AI's.
-* Commander/multiplayer prompts are untested; the runner is two-player Constructed.
+* Only Constructed and Commander are set up by the runner/launcher (Oathbreaker, Brawl, Planechase, ... are not). Teams are not supported.
+* A game with an LLM seat in the GUI has no "thinking" indicator beyond Forge's normal priority highlight.
 * Card text in prompts comes from the card scripts (Oracle text); rulings are available to a real model only through the optional `lookupCard` tool (below).
 
 ## Next steps
