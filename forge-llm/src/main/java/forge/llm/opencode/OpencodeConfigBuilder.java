@@ -70,6 +70,8 @@ public final class OpencodeConfigBuilder {
         final JsonObject providers = new JsonObject();
         if ("lmstudio".equals(s.providerId())) {
             providers.add("lmstudio", lmStudioProvider(s));
+        } else if ("openrouter".equals(s.providerId())) {
+            providers.add("openrouter", openRouterProvider(s));
         }
         copyProviders(s, root, providers);
         if (providers.size() > 0) {
@@ -108,6 +110,41 @@ public final class OpencodeConfigBuilder {
         final JsonObject model = new JsonObject();
         model.addProperty("name", s.modelId());
         model.add("limit", limit);
+        final JsonObject models = new JsonObject();
+        models.add(s.modelId(), model);
+        provider.add("models", models);
+        return provider;
+    }
+
+    /**
+     * OpenRouter, the hosted default: opencode names the model "openrouter/&lt;modelID&gt;" and reads the key from the
+     * OPENROUTER_API_KEY environment variable (the launch scripts fill it from the local opencode installation's
+     * auth store when it is not set, so it never has to touch disk).
+     */
+    private static JsonObject openRouterProvider(OpencodeSettings s) {
+        final JsonObject provider = new JsonObject();
+        provider.addProperty("npm", "@openrouter/ai-sdk-provider");
+        provider.addProperty("name", "OpenRouter");
+        final JsonObject options = new JsonObject();
+        options.addProperty("apiKey", "{env:OPENROUTER_API_KEY}");
+        provider.add("options", options);
+
+        final JsonObject model = new JsonObject();
+        model.addProperty("name", s.modelId());
+        if (s.contextTokens > 0) {
+            final JsonObject limit = new JsonObject();
+            limit.addProperty("context", s.contextTokens);
+            limit.addProperty("output", s.outputReserveTokens);
+            model.add("limit", limit);
+        }
+        // The "high" effort variant is what RunOptions passes by default; define it so it always resolves.
+        final JsonObject reasoning = new JsonObject();
+        reasoning.addProperty("effort", "high");
+        final JsonObject high = new JsonObject();
+        high.add("reasoning", reasoning);
+        final JsonObject variants = new JsonObject();
+        variants.add("high", high);
+        model.add("variants", variants);
         final JsonObject models = new JsonObject();
         models.add(s.modelId(), model);
         provider.add("models", models);

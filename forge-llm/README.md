@@ -5,8 +5,8 @@ what to do with priority, which creatures attack, and how to block - are handed 
 other prompt the engine can raise (mulligans, discards, scry, X values...) stays with the built-in AI.
 
 Status: **working end to end.** Stub agents (no model needed) drive the tests; `OpencodeAgent` plays through a real
-model via [opencode](https://opencode.ai) - developed against a local Gemma E2B (16k context) in LM Studio, intended for
-a large-context hosted model later. See "Using a real model through opencode".
+model via [opencode](https://opencode.ai) - by default DeepSeek Flash on OpenRouter at high reasoning effort, first
+developed against a local Gemma E2B (16k context) in LM Studio. See "Using a real model through opencode".
 
 ## Keeping this mergeable with upstream Forge
 
@@ -97,8 +97,9 @@ llm play --seats human,llm,llm,ai --deck1 "<your deck>"
 ```
 
 This opens the normal Forge window and starts a match straight away with you in your seat; the other seats are LLM-
-or AI-driven. Defaults: Commander, seats `human,llm,ai,ai`, the opencode agent with the model from
-`--oc-model` (LM Studio's Gemma unless told otherwise; see "Using a real model through opencode" for DeepSeek).
+or AI-driven. Defaults: Commander, seats `human,llm,ai,ai`, the opencode agent on
+`openrouter/~deepseek/deepseek-flash-latest` reasoning at high effort (change with `--oc-model` / `--oc-variant`;
+see "Using a real model through opencode").
 Exactly one seat must be `human`. `--format constructed` plays a normal 1v1 (`--seats human,llm`).
 
 Things to expect: the opponent's turns look like the built-in AI's but with pauses while the model thinks (a local model
@@ -138,8 +139,11 @@ The latter two matter: opencode otherwise also appends your Claude Code `~/.clau
 development machine, and it would be sent to whatever provider is in use. (Downloaded provider SDKs are cached in
 `<tmp>/forge-llm-opencode-cache` between runs; per-run directories left behind by a killed run are swept after a day.)
 
-**Requirements:** `opencode` on the PATH (tested with 1.18.29) and a model: by default LM Studio serving
-`google/gemma-4-e2b` at `http://127.0.0.1:1234/v1`.
+**Requirements:** `opencode` on the PATH (tested with 1.18.x). The default model is
+`openrouter/~deepseek/deepseek-flash-latest` at reasoning effort `high`: the launch scripts take the OpenRouter key
+from your local opencode installation's `auth.json` (or `OPENROUTER_API_KEY`, if set) and the generated config hands
+it to the isolated server in its environment. A local LM Studio model still works with
+`--oc-model lmstudio/google/gemma-4-e2b --oc-lmstudio-url http://127.0.0.1:1234/v1`.
 
 ### Why a purpose-built agent
 

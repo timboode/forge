@@ -20,6 +20,7 @@ public class OpencodeConfigBuilderTest {
     @Test
     public void localLmStudioModelGetsItsOwnProviderWithTheContextWindowItWasGiven() {
         OpencodeSettings s = new OpencodeSettings();
+        s.model = "lmstudio/google/gemma-4-e2b";
         s.contextTokens = 16384;
         JsonObject config = OpencodeConfigBuilder.build(s);
 
@@ -28,6 +29,19 @@ public class OpencodeConfigBuilderTest {
         assertEquals(provider.getAsJsonObject("options").get("baseURL").getAsString(), "http://127.0.0.1:1234/v1");
         JsonObject model = provider.getAsJsonObject("models").getAsJsonObject("google/gemma-4-e2b");
         assertEquals(model.getAsJsonObject("limit").get("context").getAsInt(), 16384);
+    }
+
+    @Test
+    public void theDefaultModelIsDeepSeekFlashOnOpenRouterWithAHighEffortVariant() {
+        JsonObject config = OpencodeConfigBuilder.build(new OpencodeSettings());
+
+        assertEquals(config.get("model").getAsString(), "openrouter/~deepseek/deepseek-flash-latest");
+        JsonObject provider = config.getAsJsonObject("provider").getAsJsonObject("openrouter");
+        assertEquals(provider.get("npm").getAsString(), "@openrouter/ai-sdk-provider");
+        assertEquals(provider.getAsJsonObject("options").get("apiKey").getAsString(), "{env:OPENROUTER_API_KEY}");
+        JsonObject model = provider.getAsJsonObject("models").getAsJsonObject("~deepseek/deepseek-flash-latest");
+        assertEquals(model.getAsJsonObject("variants").getAsJsonObject("high")
+                .getAsJsonObject("reasoning").get("effort").getAsString(), "high");
     }
 
     @Test
@@ -91,6 +105,7 @@ public class OpencodeConfigBuilderTest {
                       "mcp": { "something-heavy": { "type": "local", "command": ["x"] } } }
                     """);
             OpencodeSettings s = new OpencodeSettings();
+            s.model = "lmstudio/google/gemma-4-e2b";
             s.providerConfigFile = file;
             JsonObject config = OpencodeConfigBuilder.build(s);
 

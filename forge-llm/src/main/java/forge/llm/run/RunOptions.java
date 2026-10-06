@@ -26,10 +26,11 @@ import forge.llm.opencode.OpencodeSettings;
  *          --seed S   --transcript &lt;dir&gt;
  * Agent:   --agent heuristic|pass|opencode       --decision-timeout &lt;s&gt;   --max-log-lines N   --max-consultations N
  * opencode:
- *          --oc-model providerID/modelID         (default lmstudio/google/gemma-4-e2b)
+ *          --oc-model providerID/modelID          (default openrouter/~deepseek/deepseek-flash-latest)
  *          --oc-lmstudio-url http://127.0.0.1:1234/v1     --oc-context &lt;tokens&gt;
  *          --oc-provider-config &lt;opencode.json&gt;  (borrow its "provider" section, e.g. ~/.config/opencode/opencode.json)
- *          --oc-variant &lt;name&gt;  --oc-exe &lt;path&gt;  --oc-keep-sessions  --oc-log-level DEBUG|INFO  --oc-work-dir &lt;dir&gt;
+ *          --oc-variant &lt;name&gt;                    (default "high" for openrouter models, otherwise the provider default)
+ *          --oc-exe &lt;path&gt;  --oc-keep-sessions  --oc-log-level DEBUG|INFO  --oc-work-dir &lt;dir&gt;
  *          --oc-url &lt;url&gt;   (use an opencode server that is already running; password from OPENCODE_SERVER_PASSWORD)
  *          --mcp-url &lt;url&gt;  (MCP server with the lookupCard tool, see forge-llm/mcp)
  * </pre>
@@ -164,7 +165,9 @@ public final class RunOptions {
         if (opts.containsKey("oc-provider-config")) {
             s.providerConfigFile = Path.of(opts.get("oc-provider-config"));
         }
-        s.variant = opts.get("oc-variant");
+        // The hosted default (DeepSeek Flash on OpenRouter) reasons at high effort unless told otherwise.
+        s.variant = opts.containsKey("oc-variant") ? opts.get("oc-variant")
+                : (s.model.startsWith("openrouter/") ? "high" : null);
         s.executable = opts.get("oc-exe");
         s.keepSessions = opts.containsKey("oc-keep-sessions");
         s.logLevel = opts.get("oc-log-level");

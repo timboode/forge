@@ -31,7 +31,8 @@ import forge.llm.agent.SummaryRequest;
  *       [FORGE_LLM_LIVE_MODEL=lmstudio/google/gemma-4-e2b] [FORGE_LLM_LIVE_CONTEXT=16384]
  *       [FORGE_LLM_LIVE_MCP=http://127.0.0.1:3041/]     (or the same as -Dforge.llm.live... system properties)
  * </pre>
- * With the defaults it needs opencode on the PATH and LM Studio serving google/gemma-4-e2b on 127.0.0.1:1234.
+ * With the defaults it needs opencode on the PATH and an OpenRouter key in the environment (OPENROUTER_API_KEY);
+ * FORGE_LLM_LIVE_MODEL can point it at a local LM Studio model instead.
  */
 public class OpencodeLiveTest {
     private OpencodeAgent agent;

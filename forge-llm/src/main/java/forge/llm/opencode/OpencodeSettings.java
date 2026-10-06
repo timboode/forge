@@ -40,8 +40,8 @@ public final class OpencodeSettings {
 
     // ---- the model -------------------------------------------------------------------------------------
 
-    /** "providerID/modelID", as opencode names models, e.g. "lmstudio/google/gemma-4-e2b". */
-    public String model = "lmstudio/google/gemma-4-e2b";
+    /** "providerID/modelID", as opencode names models, e.g. "openrouter/~deepseek/deepseek-flash-latest". */
+    public String model = "openrouter/~deepseek/deepseek-flash-latest";
 
     /** Base URL of the LM Studio (OpenAI-compatible) server, used when {@link #model} starts with "lmstudio/". */
     public String lmStudioBaseUrl = "http://127.0.0.1:1234/v1";

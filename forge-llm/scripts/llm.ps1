@@ -42,5 +42,23 @@ foreach ($open in @(
     $jvm += "$open=ALL-UNNAMED"
 }
 
+# The generated opencode config asks for the OpenRouter key as {env:OPENROUTER_API_KEY}. The isolated server
+# forge-llm starts cannot read opencode's own auth store, so take the key from the local opencode installation
+# when it is not already in the environment (it travels to opencode in the environment, never to disk).
+if (-not $env:OPENROUTER_API_KEY) {
+    $authFile = Join-Path $HOME '.local\share\opencode\auth.json'
+    if (Test-Path $authFile) {
+        try {
+            $auth = Get-Content $authFile -Raw | ConvertFrom-Json
+            if ($auth.openrouter -and $auth.openrouter.key) {
+                $env:OPENROUTER_API_KEY = $auth.openrouter.key
+                Write-Host 'Using the OpenRouter credential from the local opencode installation.'
+            }
+        } catch {
+            Write-Host "Could not read the opencode auth file ${authFile}: $_"
+        }
+    }
+}
+
 & $java @jvm -cp $classpath $main @Rest
 exit $LASTEXITCODE

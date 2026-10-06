@@ -73,6 +73,21 @@ public class RunOptionsTest {
     }
 
     @Test
+    public void opencodeDefaultsToDeepSeekFlashOnOpenRouterWithHighEffort() {
+        var s = parse().opencodeSettings();
+        assertEquals(s.model, "openrouter/~deepseek/deepseek-flash-latest");
+        assertEquals(s.providerId(), "openrouter");
+        assertEquals(s.modelId(), "~deepseek/deepseek-flash-latest");
+        assertEquals(s.variant, "high");
+    }
+
+    @Test
+    public void theHighEffortDefaultOnlyAppliesToOpenRouterModels() {
+        assertEquals(parse("--oc-variant", "low").opencodeSettings().variant, "low");
+        assertNull(parse("--oc-model", "lmstudio/google/gemma-4-e2b").opencodeSettings().variant);
+    }
+
+    @Test
     public void aLocalModelGetsALongerPerCallTimeoutThanTheDefault() {
         assertEquals(parse("--agent", "opencode").playerConfig().decisionTimeoutSeconds, 900);
         assertEquals(parse("--agent", "opencode", "--decision-timeout", "60").playerConfig().decisionTimeoutSeconds, 60);

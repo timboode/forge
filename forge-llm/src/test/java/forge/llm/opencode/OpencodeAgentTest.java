@@ -29,6 +29,7 @@ public class OpencodeAgentTest {
     public void start() throws IOException {
         fake = new FakeOpencodeServer();
         settings = new OpencodeSettings();
+        settings.model = "lmstudio/google/gemma-4-e2b";
         settings.contextTokens = 16384;
         agent = new OpencodeAgent(fake.client(), settings, null);
     }

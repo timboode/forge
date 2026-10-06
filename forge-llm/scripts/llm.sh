@@ -27,6 +27,17 @@ shift
 
 if [ -n "${JAVA_HOME:-}" ]; then JAVA="$JAVA_HOME/bin/java"; else JAVA=java; fi
 
+# The generated opencode config asks for the OpenRouter key as {env:OPENROUTER_API_KEY}. The isolated server
+# forge-llm starts cannot read opencode's own auth store, so take the key from the local opencode installation
+# when it is not already in the environment (it travels to opencode in the environment, never to disk).
+if [ -z "${OPENROUTER_API_KEY:-}" ] && command -v node >/dev/null 2>&1; then
+    OPENROUTER_API_KEY="$(node -e 'try { const a = require(process.env.HOME + "/.local/share/opencode/auth.json"); if (a.openrouter && a.openrouter.key) process.stdout.write(a.openrouter.key) } catch {}' 2>/dev/null || true)"
+    if [ -n "${OPENROUTER_API_KEY:-}" ]; then
+        export OPENROUTER_API_KEY
+        echo 'Using the OpenRouter credential from the local opencode installation.'
+    fi
+fi
+
 # classpath.txt uses the separator of the platform that built it (';' on Windows, ':' elsewhere)
 exec "$JAVA" -Xmx3g -Dfile.encoding=UTF-8 -Dio.netty.tryReflectionSetAccessible=true \
     --add-opens java.desktop/java.beans=ALL-UNNAMED --add-opens java.desktop/javax.swing.border=ALL-UNNAMED \
