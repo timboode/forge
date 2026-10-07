@@ -137,7 +137,8 @@ public final class OpencodeConfigBuilder {
             limit.addProperty("output", s.outputReserveTokens);
             model.add("limit", limit);
         }
-        // The "high" effort variant is what RunOptions passes by default; define it so it always resolves.
+        // The "high" effort variant is what RunOptions passes by default (unless --oc-output-reserve picks an
+        // output-token budget instead); define it so it always resolves.
         final JsonObject reasoning = new JsonObject();
         reasoning.addProperty("effort", "high");
         final JsonObject high = new JsonObject();

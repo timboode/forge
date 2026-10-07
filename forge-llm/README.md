@@ -100,7 +100,8 @@ llm play --seats human,llm,llm,ai --deck1 "<your deck>"
 This opens the normal Forge window and starts a match straight away with you in your seat; the other seats are LLM-
 or AI-driven. Defaults: Commander, seats `human,llm,ai,ai`, the opencode agent on
 `openrouter/~deepseek/deepseek-flash-latest` reasoning at high effort (change with `--oc-model` / `--oc-variant`;
-see "Using a real model through opencode").
+`--oc-output-reserve` asks for a maximum output-token budget instead - never both; see "Using a real model
+through opencode").
 Exactly one seat must be `human`. `--format constructed` plays a normal 1v1 (`--seats human,llm`).
 
 Things to expect: the opponent's turns look like the built-in AI's but with pauses while the model thinks (a local model
@@ -193,7 +194,7 @@ llm run --agent opencode --mcp-url http://127.0.0.1:3041/ --format commander --s
 **A different model** (e.g. a hosted DeepSeek with a 500k window) - reuse the providers from your own opencode config:
 
 ```
---oc-model <provider>/<model> --oc-provider-config ~/.config/opencode/opencode.json --oc-context 500000 [--oc-variant high]
+--oc-model <provider>/<model> --oc-provider-config ~/.config/opencode/opencode.json --oc-context 500000 [--oc-variant high | --oc-output-reserve 8192]
 ```
 
 Only the `provider` and `disabled_providers` sections of that file are copied - not its MCP servers or plugins.
@@ -208,7 +209,9 @@ or run with a config that does.
 **Reasoning models** (e.g. a local `vibethinker-3b` in LM Studio) think before answering: with the default output
 reserve (3072 tokens) they can spend the whole budget on reasoning and return no text at all (`finish: length`).
 Give them headroom with `--oc-output-reserve 16384`; the LM Studio provider advertises that as the model's output
-limit and opencode passes it as `max_tokens`. Keep an eye on system memory, too: LM Studio at a high context
+limit and opencode passes it as `max_tokens`. Asking for a reasoning effort (`--oc-variant`) and a maximum number
+of output tokens at the same time is rejected - the provider accepts only one of the two - so with neither given,
+the default model reasons at high effort. Keep an eye on system memory, too: LM Studio at a high context
 length plus the game JVM on a busy Windows machine can put enough pressure on the commit limit to crash the
 opencode (Bun) server mid-game.
 

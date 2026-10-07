@@ -71,9 +71,10 @@ public final class OpencodeClient {
         body.add("model", model);
         body.addProperty("agent", agent);
         if (variant != null && !variant.isBlank()) {
-            body.addProperty("variant", variant);
+            //body.addProperty("variant", variant);
         }
         try {
+            System.out.println("body: " + body.toString());
             return parseReply(json(checked(send(post("session/" + sessionId + "/message", body, HARD_REQUEST_LIMIT)))));
         } catch (OpencodeException e) {
             if (e.getCause() instanceof InterruptedException) {

@@ -40,9 +40,10 @@ import forge.llm.rules.RulesLibrary;
  *                                                  the working directory or the CardDatabaseMCPServer checkout)
  * opencode:
  *          --oc-model providerID/modelID          (default openrouter/~deepseek/deepseek-flash-latest)
- *          --oc-lmstudio-url http://127.0.0.1:1234/v1     --oc-context &lt;tokens&gt;   --oc-output-reserve &lt;tokens&gt;
+ *          --oc-lmstudio-url http://127.0.0.1:1234/v1     --oc-context &lt;tokens&gt;
  *          --oc-provider-config &lt;opencode.json&gt;  (borrow its "provider" section, e.g. ~/.config/opencode/opencode.json)
- *          --oc-variant &lt;name&gt;                    (default "high" for openrouter models, otherwise the provider default)
+ *          --oc-variant &lt;name&gt;                    reasoning effort; default "high" for openrouter models
+ *          --oc-output-reserve &lt;tokens&gt;           maximum output tokens; cannot be combined with --oc-variant
  *          --oc-exe &lt;path&gt;  --oc-keep-sessions  --oc-log-level DEBUG|INFO  --oc-work-dir &lt;dir&gt;
  *          --oc-url &lt;url&gt;   (use an opencode server that is already running; password from OPENCODE_SERVER_PASSWORD)
  *          --mcp-url &lt;url&gt;  (MCP server with the lookupCard tool, see forge-llm/mcp)
@@ -266,8 +267,16 @@ public final class RunOptions {
         if (opts.containsKey("oc-provider-config")) {
             s.providerConfigFile = Path.of(opts.get("oc-provider-config"));
         }
-        // The hosted default (DeepSeek Flash on OpenRouter) reasons at high effort unless told otherwise.
-        s.variant = opts.containsKey("oc-variant") ? opts.get("oc-variant")
+        // A request may carry a reasoning effort or a reasoning-token budget, never both: --oc-variant and
+        // --oc-output-reserve are mutually exclusive. With neither given, the hosted default reasons at high effort.
+        final boolean variantGiven = opts.containsKey("oc-variant");
+        final boolean outputReserveGiven = opts.containsKey("oc-output-reserve");
+        if (variantGiven && outputReserveGiven) {
+            throw new IllegalArgumentException("--oc-variant (reasoning effort) and --oc-output-reserve "
+                    + "(max output tokens) cannot be combined: give only one of the two");
+        }
+        s.variant = variantGiven ? opts.get("oc-variant")
+                : outputReserveGiven ? null
                 : (s.model.startsWith("openrouter/") ? "high" : null);
         s.executable = opts.get("oc-exe");
         s.keepSessions = opts.containsKey("oc-keep-sessions");

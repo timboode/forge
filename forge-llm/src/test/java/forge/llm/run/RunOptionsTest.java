@@ -63,15 +63,26 @@ public class RunOptionsTest {
     @Test
     public void opencodeSettingsAreReadFromTheOptions() {
         var s = parse("--oc-model", "curator-dev/deepseek-v4", "--oc-context", "500000", "--oc-variant", "high",
-                "--oc-output-reserve", "8192",
                 "--mcp-url", "http://127.0.0.1:3041/", "--oc-keep-sessions").opencodeSettings();
         assertEquals(s.providerId(), "curator-dev");
         assertEquals(s.modelId(), "deepseek-v4");
         assertEquals(s.contextTokens, 500000);
         assertEquals(s.variant, "high");
-        assertEquals(s.outputReserveTokens, 8192);
         assertEquals(s.cardServerUrl, "http://127.0.0.1:3041/");
         assertTrue(s.keepSessions);
+    }
+
+    @Test
+    public void aMaxOutputTokenBudgetTakesThePlaceOfTheHighEffortDefault() {
+        var s = parse("--oc-output-reserve", "8192").opencodeSettings();
+        assertEquals(s.outputReserveTokens, 8192);
+        assertNull(s.variant, "asking for maximum output tokens must not also ask for a reasoning effort");
+    }
+
+    @Test
+    public void reasoningEffortAndMaxOutputTokensCannotBeCombined() {
+        assertThrows(IllegalArgumentException.class,
+                () -> parse("--oc-variant", "high", "--oc-output-reserve", "8192").opencodeSettings());
     }
 
     @Test
