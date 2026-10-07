@@ -89,6 +89,11 @@ public final class OpencodeConfigBuilder {
             root.add("mcp", mcp);
         }
 
+        // disable all non-mtg mcp servers
+        final JsonObject permissions = new JsonObject();
+        permissions.addProperty("*", "deny");
+        permissions.addProperty("mtgcards_*", "allow");
+
         final JsonObject agents = new JsonObject();
         agents.add(OpencodeSettings.AGENT_NAME, agent(s));
         agents.add(OpencodeSettings.SUMMARIZER_NAME, summarizer(s));
