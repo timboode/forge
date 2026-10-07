@@ -41,7 +41,7 @@ import forge.llm.rules.RulesLibrary;
  *          --card-db AllPrintings.sqlite          (card Oracle text + rulings for exact card names; default:
  *                                                  an AllPrintings.sqlite found next to the launch scripts,
  *                                                  the working directory or the CardDatabaseMCPServer checkout)
- * opencode:
+ * inference:
  *          --oc-model providerID/modelID          (default openrouter/~deepseek/deepseek-flash-latest)
  *          --oc-lmstudio-url http://127.0.0.1:1234/v1     --oc-context &lt;tokens&gt;
  *          --oc-provider-config &lt;opencode.json&gt;  (borrow its "provider" section, e.g. ~/.config/opencode/opencode.json)
