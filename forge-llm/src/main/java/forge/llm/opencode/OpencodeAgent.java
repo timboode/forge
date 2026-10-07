@@ -10,11 +10,11 @@ import forge.llm.agent.AgentChoice;
 import forge.llm.agent.AgentRequest;
 import forge.llm.agent.ChoiceParser;
 import forge.llm.agent.ContextOverflowException;
-import forge.llm.agent.DecisionAgent;
+import forge.llm.agent.ModelAgent;
 import forge.llm.agent.SummaryRequest;
 
 /**
- * A {@link DecisionAgent} backed by an LLM that is reached through opencode's HTTP server.
+ * A {@link ModelAgent} backed by an LLM that is reached through opencode's HTTP server.
  *
  * <ul>
  *   <li>One opencode session per forge-llm session key: all decisions of a turn happen in one conversation, so
@@ -28,7 +28,7 @@ import forge.llm.agent.SummaryRequest;
  *       over with a compact prompt.</li>
  * </ul>
  */
-public final class OpencodeAgent implements DecisionAgent, AutoCloseable {
+public final class OpencodeAgent implements ModelAgent {
     /** Conservative characters-per-token for English prose plus card text and digits. */
     private static final double CHARS_PER_TOKEN = 3.2;
     /** Tokens opencode adds to every request on top of the conversation: instructions, tool definitions, environment. */

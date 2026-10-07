@@ -135,4 +135,21 @@ public class RunOptionsTest {
         assertThrows(IllegalArgumentException.class,
                 () -> parse("--card-db", "definitely-missing-cards-xyz.sqlite").rulesLibrary());
     }
+
+    @Test
+    public void theInferenceProviderDefaultsToOpencodeAndRejectsUnknownNames() {
+        assertEquals(parse().llmProvider(), RunOptions.LLM_PROVIDER_OPENCODE);
+        assertEquals(parse("--oc-llm-provider", "raw-inference-openai-compatible").llmProvider(), RunOptions.LLM_PROVIDER_RAW);
+        assertThrows(IllegalArgumentException.class, () -> parse("--oc-llm-provider", "lmstudio").llmProvider());
+    }
+
+    @Test
+    public void rawProviderSettingsComeFromTheCommandLine() {
+        var s = parse("--oc-model", "inclusionai/ling-3.1-flash", "--oc-context", "262144",
+                "--oc-output-reserve", "8192", "--mcp-url", "http://127.0.0.1:3042/").rawInferenceSettings();
+        assertEquals(s.model, "inclusionai/ling-3.1-flash");
+        assertEquals(s.contextTokens, 262144);
+        assertEquals(s.outputReserveTokens, 8192);
+        assertEquals(s.cardServerUrl, "http://127.0.0.1:3042/");
+    }
 }
