@@ -13,12 +13,15 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import forge.llm.agent.DecisionAgent;
+import forge.llm.agent.ModelAgent;
 import forge.llm.agent.RecordingAgent;
 import forge.llm.agent.stub.HeuristicStubAgent;
 import forge.llm.agent.stub.PassOnlyStubAgent;
 import forge.llm.control.LlmPlayerConfig;
 import forge.llm.opencode.OpencodeAgent;
 import forge.llm.opencode.OpencodeSettings;
+import forge.llm.openai.RawInferenceSettings;
+import forge.llm.openai.RawOpenAiAgent;
 import forge.llm.rules.ForgeCardFacts;
 import forge.llm.rules.MtgjsonCardFacts;
 import forge.llm.rules.RulesLibrary;
@@ -46,9 +49,15 @@ import forge.llm.rules.RulesLibrary;
  *          --oc-exe &lt;path&gt;  --oc-keep-sessions  --oc-log-level DEBUG|INFO  --oc-work-dir &lt;dir&gt;
  *          --oc-url &lt;url&gt;   (use an opencode server that is already running; password from OPENCODE_SERVER_PASSWORD)
  *          --mcp-url &lt;url&gt;  (MCP server with the lookupCard tool, see forge-llm/mcp)
+ *          --oc-llm-provider opencode|raw-inference-openai-compatible   (default opencode; the raw provider
+ *                             calls the OpenAI-compatible /responses API at $OPENAI_API_ENDPOINT with $OPENAI_API_KEY)
  * </pre>
  */
 public final class RunOptions {
+    /** The two names --oc-llm-provider accepts: the opencode server and a raw OpenAI-compatible API. */
+    public static final String LLM_PROVIDER_OPENCODE = "opencode";
+    public static final String LLM_PROVIDER_RAW = "raw-inference-openai-compatible";
+
     private final Map<String, String> opts;
     private RulesLibrary cachedRules;
     private boolean rulesLoaded;
@@ -216,7 +225,9 @@ public final class RunOptions {
         return switch (agentKind()) {
             case "pass" -> new PassOnlyStubAgent();
             case "heuristic" -> new HeuristicStubAgent();
-            case "opencode" -> OpencodeAgent.connect(opencodeSettings());
+            case "opencode" -> LLM_PROVIDER_RAW.equals(llmProvider())
+                    ? RawOpenAiAgent.connect(rawInferenceSettings())
+                    : OpencodeAgent.connect(opencodeSettings());
             default -> throw new IllegalArgumentException("unknown agent '" + agentKind() + "' (heuristic|pass|opencode)");
         };
     }
@@ -227,8 +238,8 @@ public final class RunOptions {
         if (dir == null) {
             return base;
         }
-        final String header = base instanceof OpencodeAgent opencode
-                ? "======== STANDING INSTRUCTIONS (the system prompt of every session) ========\n" + opencode.systemPrompt() + "\n"
+        final String header = base instanceof ModelAgent model
+                ? "======== STANDING INSTRUCTIONS (the system prompt of every session) ========\n" + model.systemPrompt() + "\n"
                 : "";
         return new RecordingAgent(base, Files.newBufferedWriter(dir.resolve(tag + ".txt"), StandardCharsets.UTF_8), header);
     }
@@ -251,6 +262,32 @@ public final class RunOptions {
         config.maxRulesResultLines = getInt("rules-lines", config.maxRulesResultLines);
         config.maxRulesQueriesPerDecision = getInt("rules-queries", config.maxRulesQueriesPerDecision);
         return config;
+    }
+
+    /** Which transport --agent opencode uses: the opencode server (default) or the raw OpenAI-compatible API. */
+    public String llmProvider() {
+        final String provider = opts.getOrDefault("oc-llm-provider", LLM_PROVIDER_OPENCODE);
+        if (!LLM_PROVIDER_OPENCODE.equals(provider) && !LLM_PROVIDER_RAW.equals(provider)) {
+            throw new IllegalArgumentException("unknown --oc-llm-provider '" + provider + "' ("
+                    + LLM_PROVIDER_OPENCODE + "|" + LLM_PROVIDER_RAW + ")");
+        }
+        return provider;
+    }
+
+    /**
+     * Settings for the raw provider. The endpoint and the API key are read from the environment only
+     * ({@link RawInferenceSettings#ENDPOINT_ENV} / {@link RawInferenceSettings#API_KEY_ENV}); the model comes
+     * from {@code --oc-model} as the provider names it (e.g. "inclusionai/ling-3.1-flash").
+     */
+    public RawInferenceSettings rawInferenceSettings() {
+        final RawInferenceSettings s = new RawInferenceSettings();
+        s.endpoint = System.getenv(RawInferenceSettings.ENDPOINT_ENV);
+        s.apiKey = System.getenv(RawInferenceSettings.API_KEY_ENV);
+        s.model = opts.get("oc-model");
+        s.contextTokens = getInt("oc-context", 0);
+        s.outputReserveTokens = getInt("oc-output-reserve", s.outputReserveTokens);
+        s.cardServerUrl = opts.get("mcp-url");
+        return s;
     }
 
     public OpencodeSettings opencodeSettings() {

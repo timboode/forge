@@ -31,6 +31,8 @@ developed against a local Gemma E2B (16k context) in LM Studio. See "Using a rea
 | `control` | `PlayerControllerLlm` / `LobbyPlayerLlm` (the integration point), `PriorityGate` (when is the model worth waking), `LlmPlayerConfig`, `LlmStats`. |
 | `bridge`  | `AiBridge` - the only coupling to forge-ai internals. |
 | `opencode`| `OpencodeAgent` (the real-model `DecisionAgent`), `OpencodeServer` (launches/stops `opencode serve`), `OpencodeClient` (HTTP), `OpencodeConfigBuilder` (the config + lean `forge-player` agent injected into opencode), `OpencodeSettings`. |
+| `openai`  | `RawOpenAiAgent`: the same model loop without opencode, straight to an OpenAI-compatible Responses API (endpoint/key from the environment; `--oc-llm-provider raw-inference-openai-compatible`). |
+| `mcp`     | `McpCardLookup`: the card server (see `mcp/`) reached over streamable HTTP to execute the `lookupCard` function tool. |
 | `run`     | `PlayVsLlm` (**play in the Forge GUI** against LLM opponents), `LlmMatchRunner` (headless games, modelled on `forge sim`), `OpencodeCheck` (setup sanity check), plus the shared `RunOptions`, `MatchSetup`, `DeckSource`, `Format`, `Seat`, `GameLauncher`. |
 
 ## How a decision flows
@@ -215,10 +217,32 @@ opencode (Bun) server mid-game.
 **When something is slow or wrong:** `--oc-log-level DEBUG --oc-work-dir <dir>` keeps opencode's log in `<dir>/opencode.log`;
 `--oc-keep-sessions` leaves the conversations in opencode for inspection; `--transcript` records every prompt and answer.
 
+## Raw inference provider (no opencode)
+
+`--oc-llm-provider raw-inference-openai-compatible` replaces the opencode server with a direct call to an
+OpenAI-compatible **Responses** API (developed against
+[OpenRouter's](https://openrouter.ai/docs/api_reference/responses/overview)). Everything else works the same:
+the same prompts, sessions, summaries, the rules option, and the card lookup.
+
+* The endpoint and the key are never part of the build: set `OPENAI_API_ENDPOINT` (base URL, e.g.
+  `https://openrouter.ai/api/v1`) and `OPENAI_API_KEY` (for OpenRouter, the key configured in your opencode
+  installation) in the environment. The app reads both at startup; nothing else provides them.
+* `--oc-model` takes the provider's own model slug, e.g. `--oc-model inclusionai/ling-3.1-flash`.
+* The Responses API is stateless, so forge-llm resends the whole conversation of a session on every request.
+  With `--mcp-url` the model gets `lookupCard` as a function tool and this side executes the calls against the
+  card server before handing the result back.
+* `--oc-context` sets the model's window (default 131072); `--oc-output-reserve` is the request's
+  `max_output_tokens`.
+
+```
+llm check --oc-llm-provider raw-inference-openai-compatible --oc-model inclusionai/ling-3.1-flash --mcp-url http://127.0.0.1:3041/
+```
+
 ## Tests
 
 * `ChoiceParserTest`, `PriorityGateTest`, `ContextManagerTest` - pure unit tests.
 * `OpencodeAgentTest`, `OpencodeConfigBuilderTest` - the opencode integration against a fake opencode server (HTTP, auth, sessions, overflow, summaries, config).
+* `RawOpenAiAgentTest`, `McpCardLookupTest` - the raw provider and the card server client against fake HTTP servers.
 * `OpencodeLiveTest` - against a real opencode and model; skipped unless `FORGE_LLM_LIVE=true`.
 * `RunOptionsTest` - command-line parsing, seats, defaults.
 * `LlmGameIntegrationTest` - complete games on the real engine: every offered action executes, the agent is

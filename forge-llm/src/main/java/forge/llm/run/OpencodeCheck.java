@@ -7,9 +7,11 @@ import forge.llm.agent.AgentChoice;
 import forge.llm.agent.AgentRequest;
 import forge.llm.agent.ContextOverflowException;
 import forge.llm.agent.DecisionKind;
+import forge.llm.agent.ModelAgent;
 import forge.llm.agent.SummaryRequest;
+import forge.llm.mcp.McpCardLookup;
 import forge.llm.opencode.OpencodeAgent;
-import forge.llm.opencode.OpencodeSettings;
+import forge.llm.openai.RawOpenAiAgent;
 import forge.llm.rules.RulesLibrary;
 
 /**
@@ -74,6 +76,14 @@ public final class OpencodeCheck {
             - Counterspell (#12) - no legal target
             """;
 
+    private static final String CARD = """
+            # DECISION
+            You need the Oracle text of the card 'Grizzly Bears'. Use the lookupCard tool to fetch it, then choose.
+
+            ## AVAILABLE ACTIONS (choose from these ids only)
+            [0] Pass priority (with an empty stack the game moves on to the next step/phase)
+            """;
+
     private static final String SECOND = """
             # UPDATE (decision 2 of this session)
             ## What happened since your last decision
@@ -88,15 +98,24 @@ public final class OpencodeCheck {
 
     public static void main(String[] args) throws Exception {
         final RunOptions options = RunOptions.parse(args);
-        final OpencodeSettings settings = options.opencodeSettings();
         final RulesLibrary rules = options.rulesLibrary();
-        System.out.println("Model: " + settings.model
-                + (settings.cardServerUrl != null ? ", card server " + settings.cardServerUrl : "")
+        final boolean raw = RunOptions.LLM_PROVIDER_RAW.equals(options.llmProvider());
+        final String model = raw ? options.get("oc-model", "(no --oc-model)") : options.opencodeSettings().model;
+        final String cardServer = options.get("mcp-url");
+        System.out.println("Provider: " + options.llmProvider() + ", model: " + model
+                + (cardServer != null ? ", card server " + cardServer : "")
                 + (rules != null ? ", rules: " + rules.describe() : ", no rules files configured"));
 
         long t = System.nanoTime();
-        try (OpencodeAgent agent = OpencodeAgent.connect(settings)) {
-            System.out.printf("opencode ready in %.1fs, context window %d tokens%n", seconds(t), agent.contextTokens());
+        try (ModelAgent agent = raw ? RawOpenAiAgent.connect(options.rawInferenceSettings())
+                : OpencodeAgent.connect(options.opencodeSettings())) {
+            System.out.printf("agent ready in %.1fs, context window %d tokens%n", seconds(t), agent.contextTokens());
+
+            if (cardServer != null) {
+                t = System.nanoTime();
+                final String card = new McpCardLookup(cardServer).lookup("Grizzly Bears");
+                System.out.printf("card server direct call (%.1fs): %s%n", seconds(t), oneLine(card));
+            }
 
             t = System.nanoTime();
             AgentChoice choice = ask(agent, "check-turn", true, FIRST);
@@ -128,11 +147,17 @@ public final class OpencodeCheck {
             final String summary = agent.summarize(new SummaryRequest(SummaryRequest.Kind.TURN, "Alice",
                     "T3 Main: Play land: Island (reason: need a third land for Air Elemental)\nT3 End: passed (reason: holding Counterspell mana)", ""));
             System.out.printf("summary (%.1fs): %s%n", seconds(t), summary);
+
+            if (cardServer != null) {
+                t = System.nanoTime();
+                final AgentChoice card = ask(agent, "check-card", true, CARD);
+                System.out.printf("card tool decision (%.1fs): %s%n", seconds(t), describe(card));
+            }
         }
         System.exit(0);
     }
 
-    private static AgentChoice ask(OpencodeAgent agent, String key, boolean fresh, String prompt) {
+    private static AgentChoice ask(ModelAgent agent, String key, boolean fresh, String prompt) {
         try {
             return agent.decide(new AgentRequest(key, fresh, DecisionKind.PRIORITY, prompt, List.<GameAction>of()));
         } catch (ContextOverflowException e) {
@@ -152,5 +177,10 @@ public final class OpencodeCheck {
 
     private static double seconds(long since) {
         return (System.nanoTime() - since) / 1e9;
+    }
+
+    private static String oneLine(String text) {
+        final String flat = text.replace('\r', ' ').replace('\n', ' ').trim();
+        return flat.length() <= 120 ? flat : flat.substring(0, 120) + "...";
     }
 }
