@@ -389,5 +389,12 @@
                 <module>forge-gui-ios</module>
             </modules>
         </profile>
+        <!-- Opt-in LLM-controlled player integration (self-contained, see forge-llm/README.md): mvn -Pllm ... -->
+        <profile>
+            <id>llm</id>
+            <modules>
+                <module>forge-llm</module>
+            </modules>
+        </profile>
     </profiles>
 </project>
