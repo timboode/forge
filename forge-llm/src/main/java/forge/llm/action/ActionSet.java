@@ -53,4 +53,13 @@ public final class ActionSet {
         }
         return null;
     }
+
+    /** The id the "Query MTG rules" option gets: one past the last real action. */
+    public int queryOptionId() {
+        int max = -1;
+        for (GameAction a : actions) {
+            max = Math.max(max, a.id());
+        }
+        return max + 1;
+    }
 }

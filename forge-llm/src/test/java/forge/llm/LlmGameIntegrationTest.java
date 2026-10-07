@@ -358,4 +358,89 @@ public class LlmGameIntegrationTest {
         assertTrue(p.stats().consultations.get() <= 2 * turns, p.stats() + " over " + turns + " turns");
         assertTrue(p.stats().autoPassedByGate.get() > 0, "the budget should have gated some windows: " + p.stats());
     }
+
+    /**
+     * The "Query MTG rules" option: the model may ask instead of choosing, the controller serves matching lines
+     * from the rules files in the same conversation, and the model then plays normally.
+     */
+    @Test
+    public void aRulesLookupIsServedFromTheRulesFilesAndTheGamePlaysOn() throws java.io.IOException {
+        final java.nio.file.Path rulesFile = java.nio.file.Files.createTempFile("rules-int", ".txt");
+        java.nio.file.Files.writeString(rulesFile, "701.26a A creature is summoning sick unless it has haste.\n");
+        List<AgentRequest> seen = new java.util.ArrayList<>();
+        AtomicInteger lookups = new AtomicInteger();
+        DecisionAgent querying = new DecisionAgent() {
+            @Override
+            public AgentChoice decide(AgentRequest request) {
+                seen.add(request);
+                if (request.kind() == DecisionKind.PRIORITY && lookups.get() == 0 && request.options().size() > 1) {
+                    int queryId = request.options().stream().mapToInt(GameAction::id).max().orElse(0) + 1;
+                    lookups.incrementAndGet();
+                    return AgentChoice.of(queryId, "need the rules").withSearchTerms(List.of("summoning sick", "haste"));
+                }
+                if (request.kind() == DecisionKind.PRIORITY) {
+                    return AgentChoice.pass("stub: pass");
+                }
+                return AgentChoice.none("stub: none");
+            }
+
+            @Override
+            public String summarize(SummaryRequest request) {
+                return "";
+            }
+        };
+        LlmPlayerConfig cfg = new LlmPlayerConfig();
+        cfg.rules = forge.llm.rules.RulesLibrary.load(List.of(rulesFile), null);
+        Played p = play(querying, cfg, DECK_PAIRS[0], 23);
+
+        try {
+            assertEquals(p.stats().rulesQueries.get(), 1, p.stats().toString());
+            assertTrue(seen.stream().anyMatch(r -> r.prompt().contains("# RULES LOOKUP RESULT")),
+                    "the lookup result was served in the conversation");
+            assertTrue(seen.stream().anyMatch(r -> r.prompt().contains("701.26a")),
+                    "the matching rules line reached the model");
+            assertTrue(seen.stream().anyMatch(r -> r.prompt().contains("Query MTG rules")), "the option is offered");
+            assertEquals(p.stats().invalidAnswers.get(), 0, p.stats().toString());
+        } finally {
+            java.nio.file.Files.deleteIfExists(rulesFile);
+        }
+    }
+
+    @Test
+    public void rulesLookupsAreCappedPerDecisionAndThenTheAiTakesOver() throws java.io.IOException {
+        final java.nio.file.Path rulesFile = java.nio.file.Files.createTempFile("rules-cap", ".txt");
+        java.nio.file.Files.writeString(rulesFile, "rule line about haste and summoning sickness.\n");
+        AtomicInteger consults = new AtomicInteger();
+        DecisionAgent asksTwiceThenPasses = new DecisionAgent() {
+            @Override
+            public AgentChoice decide(AgentRequest request) {
+                if (request.kind() == DecisionKind.PRIORITY && request.options().size() > 1
+                        && consults.incrementAndGet() <= 3) {
+                    int queryId = request.options().stream().mapToInt(GameAction::id).max().orElse(0) + 1;
+                    return AgentChoice.of(queryId, "ask").withSearchTerms(List.of("haste"));
+                }
+                if (request.kind() == DecisionKind.PRIORITY) {
+                    return AgentChoice.pass("stub: pass");
+                }
+                return AgentChoice.none("stub: none");
+            }
+
+            @Override
+            public String summarize(SummaryRequest request) {
+                return "";
+            }
+        };
+        LlmPlayerConfig cfg = new LlmPlayerConfig();
+        cfg.maxRulesQueriesPerDecision = 1;
+        cfg.rules = forge.llm.rules.RulesLibrary.load(List.of(rulesFile), null);
+        Played p = play(asksTwiceThenPasses, cfg, DECK_PAIRS[0], 29);
+
+        try {
+            assertTrue(p.stats().rulesQueries.get() >= 1, p.stats().toString());
+            assertTrue(p.stats().invalidAnswers.get() > 0, "the cap is reported as an invalid answer: " + p.stats());
+            assertTrue(p.stats().fallbacksToAi.get() > 0, p.stats().toString());
+        } finally {
+            java.nio.file.Files.deleteIfExists(rulesFile);
+        }
+    }
 }

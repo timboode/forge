@@ -1,6 +1,7 @@
 package forge.llm.agent;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
@@ -57,5 +58,35 @@ public class ChoiceParserTest {
     public void garbageIsRejected() {
         expectThrows(IllegalArgumentException.class, () -> ChoiceParser.parse("I would like to attack with everything"));
         expectThrows(IllegalArgumentException.class, () -> ChoiceParser.parse(null));
+    }
+
+    @Test
+    public void aRulesLookupCarriesItsQuotedSearchPhrases() {
+        AgentChoice c = ChoiceParser.parse("ACTION 12 'first strike', 'damage assignment'\nREASON: unsure");
+        assertEquals(c.actionIds(), List.of(12));
+        assertEquals(c.searchTerms(), List.of("first strike", "damage assignment"));
+        assertEquals(c.reasoning(), "unsure");
+        assertTrue(c.isRulesQuery(12));
+    }
+
+    @Test
+    public void doubleQuotesOrMissingQuotesStillYieldSearchPhrases() {
+        assertEquals(ChoiceParser.parse("ACTION 9 \"deathtouch\", \"trample\"").searchTerms(), List.of("deathtouch", "trample"));
+        assertEquals(ChoiceParser.parse("ACTION 9 deathtouch, trample").searchTerms(), List.of("deathtouch", "trample"));
+    }
+
+    @Test
+    public void normalRepliesCarryNoSearchPhrases() {
+        assertTrue(ChoiceParser.parse("ACTION 3\nREASON: curve out").searchTerms().isEmpty());
+        assertTrue(ChoiceParser.parse("PASS").searchTerms().isEmpty());
+        assertFalse(ChoiceParser.parse("ACTION 3\nREASON: curve out").isRulesQuery(10));
+    }
+
+    @Test
+    public void apostrophesInTheReasonAreNotSearchPhrases() {
+        AgentChoice c = ChoiceParser.parse("ACTION 3\nREASON: I'll play my land; it isn't useful yet");
+        assertEquals(c.actionIds(), List.of(3));
+        assertTrue(c.searchTerms().isEmpty(), "prose apostrophes must not become lookup phrases");
+        assertEquals(c.reasoning(), "I'll play my land; it isn't useful yet");
     }
 }

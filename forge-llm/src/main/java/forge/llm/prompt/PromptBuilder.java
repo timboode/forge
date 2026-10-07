@@ -23,9 +23,15 @@ import forge.llm.state.MatchLogView;
 public final class PromptBuilder {
     private final GameStateRenderer renderer = new GameStateRenderer();
     private final int maxLogLines;
+    private final boolean rulesLookup;
 
     public PromptBuilder(int maxLogLines) {
+        this(maxLogLines, false);
+    }
+
+    public PromptBuilder(int maxLogLines, boolean rulesLookup) {
         this.maxLogLines = maxLogLines;
+        this.rulesLookup = rulesLookup;
     }
 
     /** Log lines kept in a compact full prompt (see {@link #full}). */
@@ -112,12 +118,36 @@ public final class PromptBuilder {
         for (GameAction a : set.actions()) {
             sb.append(a.toPromptLine()).append('\n');
         }
+        if (rulesLookup) {
+            final int query = set.queryOptionId();
+            sb.append('[').append(query).append("] Query MTG rules - look up a rule or a card first; reply: ACTION ")
+                    .append(query).append(" 'search phrase', 'another phrase'\n");
+        }
         if (!set.unavailable().isEmpty()) {
             sb.append("\n## CANNOT DO RIGHT NOW (do not attempt)\n");
             for (UnavailableAction u : set.unavailable()) {
                 sb.append("- ").append(u.toPromptLine()).append('\n');
             }
         }
+    }
+
+    /** The follow-up after a rules lookup: the matches, then the same decision again (the game has not moved). */
+    public String rulesResult(List<String> phrases, String result, ActionSet set) {
+        final StringBuilder sb = new StringBuilder();
+        sb.append("# RULES LOOKUP RESULT\n");
+        sb.append("You asked about ").append(quoted(phrases)).append(":\n\n").append(result).append('\n');
+        sb.append("\nThe game has not changed. Do not repeat the same search: if the text above answers your ")
+                .append("question, choose from the AVAILABLE ACTIONS now; you may look something else up instead.\n");
+        appendOptions(sb, set);
+        return sb.toString();
+    }
+
+    private static String quoted(List<String> phrases) {
+        final StringBuilder sb = new StringBuilder();
+        for (String phrase : phrases) {
+            sb.append(sb.length() == 0 ? "" : ", ").append('\'').append(phrase).append('\'');
+        }
+        return sb.toString();
     }
 
     private static String blankAs(String s, String fallback) {

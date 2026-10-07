@@ -109,7 +109,6 @@ public class OpencodeAgentTest {
                 ? "ACTION 2" : "I think we should attack", 300);
         assertEquals(agent.decide(request("A", true, "full")).actionIds(), List.of(2));
         assertEquals(fake.messages.size(), 2, "prompt + reminder");
-
         fake.brain = m -> FakeOpencodeServer.Answer.text("still chatting", 300);
         assertNull(agent.decide(request("B", true, "full")), "null = the controller asks again or lets the AI decide");
     }

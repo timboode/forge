@@ -85,7 +85,7 @@ public class PlayerControllerLlm extends PlayerControllerAi {
         this.cfg = cfg;
         this.stats = stats;
         this.ctx = new ContextManager(p.getName(), agent);
-        this.prompts = new PromptBuilder(cfg.maxLogLines);
+        this.prompts = new PromptBuilder(cfg.maxLogLines, cfg.rules != null);
         this.executor = new ActionExecutor(p, getAi());
         game.subscribeToEvents(new TurnLifecycle());
     }
@@ -467,6 +467,10 @@ public class PlayerControllerLlm extends PlayerControllerAi {
      * Builds the prompt for this decision, asks the agent and validates the answer, re-asking up to
      * {@code maxRetries} times with the problem spelled out.
      *
+     * A "Query MTG rules" answer is served without consuming a retry: the lookup result is handed back in the
+     * same conversation (the game state has not changed) and the model may look up to
+     * {@code maxRulesQueriesPerDecision} times before it must choose an action.
+     *
      * If the agent reports that its context window overflowed, the conversation is thrown away and the decision
      * is put to a fresh session with a compact full prompt (once; if even that does not fit, the AI decides).
      *
@@ -490,11 +494,15 @@ public class PlayerControllerLlm extends PlayerControllerAi {
         consultationsThisTurn++;
         stats.consultations.incrementAndGet();
 
-        int attempt = 0;
-        while (attempt <= cfg.maxRetries) {
+        final int queryId = set.queryOptionId();
+        final boolean canLookUp = cfg.rules != null;
+        int queries = 0;
+        int invalid = 0;
+        boolean sessionStarted = false;
+        while (invalid <= cfg.maxRetries) {
             final AgentChoice choice;
             try {
-                choice = agent.decide(new AgentRequest(session.key(), fresh && attempt == 0, kind, prompt, set.actions()));
+                choice = agent.decide(new AgentRequest(session.key(), !sessionStarted && fresh, kind, prompt, set.actions()));
             } catch (ContextOverflowException e) {
                 if (compact) {
                     Logger.warn("LLM player {}: even a compact prompt does not fit the model's context ({})", player.getName(), e.getMessage());
@@ -506,26 +514,47 @@ public class PlayerControllerLlm extends PlayerControllerAi {
                 session = ctx.restartSession(sessionKey);
                 fresh = true;
                 session.checkpoint();
+                sessionStarted = false;
+                invalid = 0;
                 prompt = prompts.full(player, kind, set, ctx.memory(), session, headline, true);
-                attempt = 0;
                 continue;
             } catch (RuntimeException | StackOverflowError e) {
                 Logger.warn(e, "LLM player {}: agent failed on a {} decision", player.getName(), kind);
-                if (attempt == 0) {
+                if (!sessionStarted) {
                     session.rollback(); // the model never saw this prompt: the next one must carry the full context again
                 }
                 return null;
             }
-            attempt++;
+            sessionStarted = true;
             if (choice == null) {
+                invalid++;
                 prompt = prompts.retry("No answer was given.", set);
                 stats.invalidAnswers.incrementAndGet();
+                continue;
+            }
+            if (canLookUp && choice.isRulesQuery(queryId)) {
+                if (queries >= cfg.maxRulesQueriesPerDecision) {
+                    invalid++;
+                    prompt = prompts.retry("You have already used your " + cfg.maxRulesQueriesPerDecision
+                            + " rules lookups for this decision. Choose an action from the list now.", set);
+                    stats.invalidAnswers.incrementAndGet();
+                    continue;
+                }
+                queries++;
+                consultationsThisTurn++;
+                stats.consultations.incrementAndGet();
+                stats.rulesQueries.incrementAndGet();
+                final String result = cfg.rules.search(choice.searchTerms(), cfg.maxRulesResultLines);
+                Logger.info("LLM player {}: rules lookup {} -> {} characters", player.getName(),
+                        choice.searchTerms(), result.length());
+                prompt = prompts.rulesResult(choice.searchTerms(), result, set);
                 continue;
             }
             final String problem = validator.apply(choice);
             if (problem == null) {
                 return choice;
             }
+            invalid++;
             stats.invalidAnswers.incrementAndGet();
             prompt = prompts.retry(problem, set);
         }

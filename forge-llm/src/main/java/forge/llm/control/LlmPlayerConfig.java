@@ -4,6 +4,7 @@ import java.util.EnumSet;
 import java.util.Set;
 
 import forge.game.phase.PhaseType;
+import forge.llm.rules.RulesLibrary;
 
 /** Tunables for one LLM-controlled player. Defaults are sensible for an MVP; all fields are mutable. */
 public final class LlmPlayerConfig {
@@ -41,4 +42,13 @@ public final class LlmPlayerConfig {
 
     /** Longest match log (in lines) shown in a full prompt; 0 = unlimited. */
     public int maxLogLines = 0;
+
+    /** Rules text and card facts the model may look up through the "Query MTG rules" option; null = not offered. */
+    public RulesLibrary rules;
+
+    /** Most rules lookups allowed in one decision before the model must choose an action. */
+    public int maxRulesQueriesPerDecision = 3;
+
+    /** Most lines one lookup returns; when more matched, the result says how many were left out. */
+    public int maxRulesResultLines = RulesLibrary.DEFAULT_MAX_LINES;
 }

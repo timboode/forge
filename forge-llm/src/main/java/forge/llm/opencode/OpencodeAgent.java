@@ -134,7 +134,8 @@ public final class OpencodeAgent implements DecisionAgent, AutoCloseable {
         OpencodeClient.Reply reply = ask(conversation, request.prompt(), request.sessionKey());
         AgentChoice choice = tryParse(reply);
         if (choice == null) {
-            Logger.info("opencode agent: unreadable reply, sending a format reminder. Reply was: {}", abbreviate(reply.text()));
+            Logger.info("opencode agent: unreadable reply, sending a format reminder. Reply was: '{}' (reasoning {} chars, finish {})",
+                    abbreviate(reply.text()), reply.reasoning().length(), reply.finish());
             reply = ask(conversation, FORMAT_REMINDER, request.sessionKey());
             choice = tryParse(reply);
         }

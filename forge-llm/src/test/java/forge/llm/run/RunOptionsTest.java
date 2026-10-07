@@ -63,11 +63,13 @@ public class RunOptionsTest {
     @Test
     public void opencodeSettingsAreReadFromTheOptions() {
         var s = parse("--oc-model", "curator-dev/deepseek-v4", "--oc-context", "500000", "--oc-variant", "high",
+                "--oc-output-reserve", "8192",
                 "--mcp-url", "http://127.0.0.1:3041/", "--oc-keep-sessions").opencodeSettings();
         assertEquals(s.providerId(), "curator-dev");
         assertEquals(s.modelId(), "deepseek-v4");
         assertEquals(s.contextTokens, 500000);
         assertEquals(s.variant, "high");
+        assertEquals(s.outputReserveTokens, 8192);
         assertEquals(s.cardServerUrl, "http://127.0.0.1:3041/");
         assertTrue(s.keepSessions);
     }
@@ -92,5 +94,34 @@ public class RunOptionsTest {
         assertEquals(parse("--agent", "opencode").playerConfig().decisionTimeoutSeconds, 900);
         assertEquals(parse("--agent", "opencode", "--decision-timeout", "60").playerConfig().decisionTimeoutSeconds, 60);
         assertEquals(parse().playerConfig().decisionTimeoutSeconds, 180);
+    }
+
+    @Test
+    public void rulesFilesComeFromTheOptionAndMissingOnesAreReported() throws java.io.IOException {
+        final java.nio.file.Path rules = java.nio.file.Files.createTempFile("rules-options", ".txt");
+        java.nio.file.Files.writeString(rules, "701.26a summoning sickness.\n");
+        try {
+            var lib = parse("--rules", rules.toString()).rulesLibrary();
+            assertTrue(lib != null, "the given file is loaded");
+            assertFalse(lib.isEmpty());
+            assertThrows(IllegalArgumentException.class,
+                    () -> parse("--rules", "definitely-missing-rules-xyz.txt").rulesLibrary());
+        } finally {
+            java.nio.file.Files.deleteIfExists(rules);
+        }
+    }
+
+    @Test
+    public void rulesAndRetryOptionsReachThePlayerConfig() {
+        var cfg = parse("--rules-lines", "40", "--rules-queries", "2", "--max-retries", "3").playerConfig();
+        assertEquals(cfg.maxRulesResultLines, 40);
+        assertEquals(cfg.maxRulesQueriesPerDecision, 2);
+        assertEquals(cfg.maxRetries, 3);
+    }
+
+    @Test
+    public void anExplicitCardDatabaseThatDoesNotExistIsReported() {
+        assertThrows(IllegalArgumentException.class,
+                () -> parse("--card-db", "definitely-missing-cards-xyz.sqlite").rulesLibrary());
     }
 }

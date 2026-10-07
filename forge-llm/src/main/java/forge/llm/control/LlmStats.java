@@ -12,6 +12,7 @@ public final class LlmStats {
     public final AtomicInteger failedExecutions = new AtomicInteger();
     public final AtomicInteger summaries = new AtomicInteger();
     public final AtomicInteger contextRestarts = new AtomicInteger();
+    public final AtomicInteger rulesQueries = new AtomicInteger();
 
     @Override
     public String toString() {
@@ -19,6 +20,7 @@ public final class LlmStats {
                 + ", autoPassedByGate=" + autoPassedByGate + ", invalidAnswers=" + invalidAnswers
                 + ", fallbacksToAi=" + fallbacksToAi + ", failedExecutions=" + failedExecutions
                 + ", summaries=" + summaries
-                + ", contextRestarts=" + contextRestarts;
+                + ", contextRestarts=" + contextRestarts
+                + ", rulesQueries=" + rulesQueries;
     }
 }

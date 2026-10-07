@@ -1,5 +1,6 @@
 package forge.llm.run;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -8,6 +9,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.regex.Pattern;
 
 import forge.llm.agent.DecisionAgent;
 import forge.llm.agent.RecordingAgent;
@@ -16,6 +19,9 @@ import forge.llm.agent.stub.PassOnlyStubAgent;
 import forge.llm.control.LlmPlayerConfig;
 import forge.llm.opencode.OpencodeAgent;
 import forge.llm.opencode.OpencodeSettings;
+import forge.llm.rules.ForgeCardFacts;
+import forge.llm.rules.MtgjsonCardFacts;
+import forge.llm.rules.RulesLibrary;
 
 /**
  * The command-line options shared by the headless runner, the GUI launcher and the opencode check, and the
@@ -25,9 +31,16 @@ import forge.llm.opencode.OpencodeSettings;
  * Game:    --format constructed|commander        --seats llm,ai,ai,...   --deck1 .. --deckN (file or library name or "random")
  *          --seed S   --transcript &lt;dir&gt;
  * Agent:   --agent heuristic|pass|opencode       --decision-timeout &lt;s&gt;   --max-log-lines N   --max-consultations N
+ *          --max-retries N
+ * Rules:   --rules file[;file]                   (rules text the model may look up; default: the two
+ *                                                  "mtg ... rules.txt" files next to the launch scripts)
+ *          --rules-lines N   --rules-queries N
+ *          --card-db AllPrintings.sqlite          (card Oracle text + rulings for exact card names; default:
+ *                                                  an AllPrintings.sqlite found next to the launch scripts,
+ *                                                  the working directory or the CardDatabaseMCPServer checkout)
  * opencode:
  *          --oc-model providerID/modelID          (default openrouter/~deepseek/deepseek-flash-latest)
- *          --oc-lmstudio-url http://127.0.0.1:1234/v1     --oc-context &lt;tokens&gt;
+ *          --oc-lmstudio-url http://127.0.0.1:1234/v1     --oc-context &lt;tokens&gt;   --oc-output-reserve &lt;tokens&gt;
  *          --oc-provider-config &lt;opencode.json&gt;  (borrow its "provider" section, e.g. ~/.config/opencode/opencode.json)
  *          --oc-variant &lt;name&gt;                    (default "high" for openrouter models, otherwise the provider default)
  *          --oc-exe &lt;path&gt;  --oc-keep-sessions  --oc-log-level DEBUG|INFO  --oc-work-dir &lt;dir&gt;
@@ -37,6 +50,10 @@ import forge.llm.opencode.OpencodeSettings;
  */
 public final class RunOptions {
     private final Map<String, String> opts;
+    private RulesLibrary cachedRules;
+    private boolean rulesLoaded;
+    private MtgjsonCardFacts cachedCardDb;
+    private boolean cardDbLoaded;
 
     private RunOptions(Map<String, String> opts) {
         this.opts = opts;
@@ -111,6 +128,83 @@ public final class RunOptions {
         return Files.createDirectories(Path.of(opts.get("transcript")));
     }
 
+    // ---- rules lookup ----------------------------------------------------------------------------------
+
+    /**
+     * The rules/card lookup the model may use through the "Query MTG rules" option. Rules files come from
+     * {@code --rules} (separated by the platform's path separator) or, by default, from the two
+     * {@code mtg ... rules.txt} files next to the launch scripts; an exact card name is answered from the
+     * card database (see {@link #cardDatabase()}). Null when there is nothing to search.
+     */
+    public RulesLibrary rulesLibrary() {
+        if (!rulesLoaded) {
+            rulesLoaded = true;
+            final List<Path> files = opts.containsKey("rules") ? explicitRulesFiles() : defaultRulesFiles();
+            final MtgjsonCardFacts db = cardDatabase();
+            final Function<String, String> cardFacts = name -> {
+                final String facts = db == null ? null : db.facts(name);
+                return facts != null ? facts : ForgeCardFacts.facts(name);
+            };
+            cachedRules = files.isEmpty() ? null : RulesLibrary.load(files, cardFacts);
+        }
+        return cachedRules;
+    }
+
+    private List<Path> explicitRulesFiles() {
+        final List<Path> found = new ArrayList<>();
+        for (String part : opts.get("rules").split(Pattern.quote(File.pathSeparator))) {
+            if (!part.isBlank() && Files.isRegularFile(Path.of(part.trim()))) {
+                found.add(Path.of(part.trim()));
+            }
+        }
+        if (found.isEmpty()) {
+            throw new IllegalArgumentException("no rules file found at " + opts.get("rules"));
+        }
+        return found;
+    }
+
+    private static List<Path> defaultRulesFiles() {
+        final List<Path> found = new ArrayList<>();
+        for (String name : List.of("mtg comprehensive rules.txt", "mtg commander rules.txt")) {
+            for (String prefix : List.of("", "forge-llm/")) {
+                final Path path = Path.of(prefix + name);
+                if (Files.isRegularFile(path)) {
+                    found.add(path);
+                    break;
+                }
+            }
+        }
+        return found;
+    }
+
+    /**
+     * The card database the lookup reads Oracle text and rulings from, or null when none is configured or
+     * found. {@code --card-db} names one explicitly; otherwise the usual AllPrintings.sqlite locations are
+     * tried: the working directory, the forge-llm checkout and the CardDatabaseMCPServer checkout.
+     */
+    private MtgjsonCardFacts cardDatabase() {
+        if (!cardDbLoaded) {
+            cardDbLoaded = true;
+            if (opts.containsKey("card-db")) {
+                final Path path = Path.of(opts.get("card-db"));
+                if (!Files.isRegularFile(path)) {
+                    throw new IllegalArgumentException("no card database at " + path);
+                }
+                cachedCardDb = MtgjsonCardFacts.open(path);
+            } else {
+                for (String candidate : List.of("AllPrintings.sqlite", "forge-llm/AllPrintings.sqlite",
+                        "CardDatabaseMCPServer/AllPrintings.sqlite", "../CardDatabaseMCPServer/AllPrintings.sqlite")) {
+                    final Path path = Path.of(candidate);
+                    if (Files.isRegularFile(path)) {
+                        cachedCardDb = MtgjsonCardFacts.open(path);
+                        break;
+                    }
+                }
+            }
+        }
+        return cachedCardDb;
+    }
+
     // ---- agent -----------------------------------------------------------------------------------------
 
     public String agentKind() {
@@ -152,6 +246,10 @@ public final class RunOptions {
         if (opts.containsKey("max-consultations")) {
             config.maxConsultationsPerTurn = Integer.parseInt(opts.get("max-consultations"));
         }
+        config.maxRetries = getInt("max-retries", config.maxRetries);
+        config.rules = rulesLibrary();
+        config.maxRulesResultLines = getInt("rules-lines", config.maxRulesResultLines);
+        config.maxRulesQueriesPerDecision = getInt("rules-queries", config.maxRulesQueriesPerDecision);
         return config;
     }
 
@@ -161,6 +259,9 @@ public final class RunOptions {
         s.lmStudioBaseUrl = opts.getOrDefault("oc-lmstudio-url", s.lmStudioBaseUrl);
         if (opts.containsKey("oc-context")) {
             s.contextTokens = Integer.parseInt(opts.get("oc-context"));
+        }
+        if (opts.containsKey("oc-output-reserve")) {
+            s.outputReserveTokens = Integer.parseInt(opts.get("oc-output-reserve"));
         }
         if (opts.containsKey("oc-provider-config")) {
             s.providerConfigFile = Path.of(opts.get("oc-provider-config"));

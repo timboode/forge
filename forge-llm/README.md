@@ -85,7 +85,8 @@ mvn -Pllm -pl forge-llm -am test                    # unit + integration tests
 Options are shared by all three (`forge.llm.run.RunOptions` documents them): `--format constructed|commander`,
 `--seats human,llm,ai,ai`, `--deck1 .. --deckN` (a .dck file, a name from your Forge deck library, or `random`),
 `--agent heuristic|pass|opencode`, `--seed`, `--transcript <dir>` (every prompt the model saw and every answer),
-plus the `--oc-*` / `--mcp-url` options below. Seats without a deck get a random deck that ships with Forge
+plus the `--oc-*` / `--mcp-url` options below and the rules/card lookup options (`--rules`, `--rules-lines`,
+`--rules-queries`, `--card-db`). Seats without a deck get a random deck that ships with Forge
 (the 180 commander precons for Commander).
 
 ## Playing a game against the LLM yourself (Commander or Constructed)
@@ -162,11 +163,19 @@ overflow the model's window (`--oc-context`, or what opencode knows about the mo
 and board, but only the most recent ~40 log lines and no library listing) and carries on. If even that does not fit, the
 built-in AI decides. With a large-context model none of this ever triggers.
 
-### Card lookup (MCP)
+### Card and rules lookup
 
-`forge-llm/mcp/CardDatabaseMCPServer` (see its README) serves card data from MTGJSON. Start it and pass
-`--mcp-url`; the model then has `mtgcards_lookupCard(cardName)` - exact Oracle text and official rulings - and nothing else.
-Small models rarely use it; the prompt already contains the text of every card on the table.
+Mid-decision, instead of an action the model may answer the numbered "Query MTG rules" option (at most
+`--rules-queries` times per decision, 3 by default); the result is handed back in the same conversation and the
+same decision continues. A lookup searches, case-insensitively, the official rules texts the runner loaded - by
+default the two `mtg ... rules.txt` files next to the launch scripts, or `--rules file[;file]` - and answers an
+exact card name from an MTGJSON `AllPrintings.sqlite` with its Oracle text and official rulings (`--card-db`
+names one; otherwise the usual locations - the working directory, the forge-llm checkout, the
+CardDatabaseMCPServer checkout - are tried, and the lookup simply has no card facts when none is present).
+
+`forge-llm/mcp/CardDatabaseMCPServer` (see its README) alternatively serves card data from the same MTGJSON
+database as a tool: start it and pass `--mcp-url`; the model then additionally has
+`mtgcards_lookupCard(cardName)` - exact Oracle text and official rulings - and nothing else.
 
 ### Trying it
 
@@ -196,6 +205,13 @@ Credentials that opencode keeps outside its config file (added with `opencode au
 directory, which an isolated server does not see. Use a provider that has its key in the config file (or `{env:NAME}`),
 or run with a config that does.
 
+**Reasoning models** (e.g. a local `vibethinker-3b` in LM Studio) think before answering: with the default output
+reserve (3072 tokens) they can spend the whole budget on reasoning and return no text at all (`finish: length`).
+Give them headroom with `--oc-output-reserve 16384`; the LM Studio provider advertises that as the model's output
+limit and opencode passes it as `max_tokens`. Keep an eye on system memory, too: LM Studio at a high context
+length plus the game JVM on a busy Windows machine can put enough pressure on the commit limit to crash the
+opencode (Bun) server mid-game.
+
 **When something is slow or wrong:** `--oc-log-level DEBUG --oc-work-dir <dir>` keeps opencode's log in `<dir>/opencode.log`;
 `--oc-keep-sessions` leaves the conversations in opencode for inspection; `--transcript` records every prompt and answer.
 
@@ -217,7 +233,9 @@ or run with a config that does.
 * Mulligans, discards, scry, trigger targets and other mid-resolution choices are the built-in AI's.
 * Only Constructed and Commander are set up by the runner/launcher (Oathbreaker, Brawl, Planechase, ... are not). Teams are not supported.
 * A game with an LLM seat in the GUI has no "thinking" indicator beyond Forge's normal priority highlight.
-* Card text in prompts comes from the card scripts (Oracle text); rulings are available to a real model only through the optional `lookupCard` tool (below).
+* Card text in prompts comes from the card scripts (Oracle text); the official rules and a card's rulings are
+  reachable mid-decision through the "Query MTG rules" option (rules files + the MTGJSON card database), or as a
+  tool through the optional card server.
 
 ## Next steps
 

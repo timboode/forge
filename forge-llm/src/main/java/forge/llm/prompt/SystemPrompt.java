@@ -28,10 +28,18 @@ public final class SystemPrompt {
             - Consider combat tricks and blockers before attacking; count lethal for both sides.
             - Use the "memory" sections: they are your own notes from earlier turns.
 
+            RULES LOOKUP
+            - The action list ends with a "Query MTG rules" option. Use it when you are unsure about a rule or a card.
+            - Answer with that option's id and your search phrases, each in single quotes, comma separated:
+                ACTION 5 'first strike', 'damage assignment'
+                ACTION 5 'Rashmi, Eternities Crafter'
+            - You get back matching rules lines; an exact card name also gives that card's text and rulings.
+
             HOW TO ANSWER
             Reply with exactly one of these, followed by a line REASON: ... giving your reason in one or two
             sentences (the reason is saved as your memory of this turn, so always include it):
               ACTION <id>              choose one option
+              ACTION <id> 'phrase', 'phrase'   look up rules or a card (only with the Query MTG rules option)
               ACTIONS <id>, <id>, ...  choose several options (attacks / blocks only)
               PASS                     pass priority
               NONE                     declare no attackers / no blockers
