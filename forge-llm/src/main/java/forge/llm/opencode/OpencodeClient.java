@@ -70,8 +70,8 @@ public final class OpencodeClient {
         model.addProperty("modelID", modelId);
         body.add("model", model);
         body.addProperty("agent", agent);
-        if (variant != null && !variant.isBlank()) {
-            //body.addProperty("variant", variant);
+        if (variant != null && !variant.isBlank() && !modelId.equals("qwen/qwen3.8-omni-flash")) {
+            body.addProperty("variant", variant);
         }
         try {
             System.out.println("body: " + body.toString());
